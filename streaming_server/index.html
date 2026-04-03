@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32-CAM FPV Stream</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --panel: #12131a;
+    --border: #1e2030;
+    --accent: #00d4ff;
+    --accent2: #00ff88;
+    --danger: #ff4466;
+    --text: #c8ccd4;
+    --text-dim: #6b7089;
+    --text-bright: #e8ecf4;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow-x: hidden;
+    height: 100vh;
+  }
+
+  /* ---- TOP BAR ---- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    height: 48px;
+    z-index: 100;
+  }
+
+  .topbar .title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .topbar .title svg { width: 20px; height: 20px; }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 12px;
+    font-family: 'Consolas', 'Courier New', monospace;
+  }
+
+  .stat {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .stat-label { color: var(--text-dim); }
+  .stat-value { color: var(--text-bright); font-weight: 600; }
+  .stat-value.fps { color: var(--accent2); font-size: 14px; }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--danger);
+    transition: background 0.3s;
+  }
+  .dot.connected { background: var(--accent2); animation: pulse 2s infinite; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* ---- LAYOUT ---- */
+  .main {
+    display: flex;
+    height: calc(100vh - 48px);
+  }
+
+  /* ---- VIDEO AREA ---- */
+  .video-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #streamCanvas {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    image-rendering: auto;
+  }
+
+  .video-overlay {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    pointer-events: none;
+  }
+
+  .overlay-badge {
+    background: rgba(0,0,0,0.7);
+    color: var(--danger);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-family: monospace;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .overlay-badge .rec-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--danger);
+    animation: pulse 1s infinite;
+  }
+
+  .no-signal {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--text-dim);
+  }
+
+  .no-signal svg {
+    width: 64px; height: 64px;
+    margin-bottom: 12px;
+    opacity: 0.3;
+  }
+
+  .no-signal p {
+    font-size: 14px;
+    margin-top: 8px;
+  }
+
+  /* ---- SIDEBAR ---- */
+  .sidebar {
+    width: 320px;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .sidebar::-webkit-scrollbar { width: 5px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .panel {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 14px;
+  }
+
+  .panel-header {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .panel-header svg { width: 14px; height: 14px; opacity: 0.6; }
+
+  /* ---- RESOLUTION ---- */
+  .res-buttons {
+    display: flex;
+    gap: 8px;
+  }
+
+  .res-btn {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+
+  .res-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .res-btn.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+  }
+
+  /* ---- FLASH ---- */
+  .flash-control {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .flash-toggle {
+    width: 44px; height: 24px;
+    border-radius: 12px;
+    background: var(--border);
+    border: none;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+
+  .flash-toggle::after {
+    content: '';
+    position: absolute;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--text);
+    top: 3px; left: 3px;
+    transition: all 0.2s;
+  }
+
+  .flash-toggle.on { background: var(--accent); }
+  .flash-toggle.on::after { left: 23px; background: #000; }
+
+  .flash-slider-wrap { flex: 1; }
+
+  /* ---- CONTROLS ---- */
+  .control-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .control-row:last-child { margin-bottom: 0; }
+
+  .control-label {
+    font-size: 12px;
+    color: var(--text);
+    min-width: 90px;
+  }
+
+  .control-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 120px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+  }
+
+  .range-value {
+    font-size: 11px;
+    font-family: monospace;
+    color: var(--text-dim);
+    min-width: 28px;
+    text-align: right;
+  }
+
+  /* ---- TOGGLE SWITCH ---- */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .toggle-switch {
+    width: 36px; height: 20px;
+    border-radius: 10px;
+    background: var(--border);
+    border: none;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+  }
+
+  .toggle-switch::after {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    top: 3px; left: 3px;
+    transition: all 0.2s;
+  }
+
+  .toggle-switch.on { background: var(--accent); }
+  .toggle-switch.on::after { left: 19px; background: #000; }
+
+  /* ---- SELECT ---- */
+  select {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+  }
+
+  select:focus { border-color: var(--accent); }
+
+  /* ---- FULLSCREEN BUTTON ---- */
+  .fullscreen-btn {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    background: rgba(0,0,0,0.7);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+    z-index: 10;
+  }
+
+  .fullscreen-btn:hover { background: rgba(0,212,255,0.2); border-color: var(--accent); }
+  .fullscreen-btn svg { width: 14px; height: 14px; }
+
+  /* ---- LATENCY BAR ---- */
+  .latency-indicator {
+    height: 3px;
+    background: var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .latency-bar {
+    height: 100%;
+    background: var(--accent2);
+    transition: width 0.3s, background 0.3s;
+    width: 0%;
+  }
+
+  .latency-bar.warn { background: #ffaa00; }
+  .latency-bar.bad { background: var(--danger); }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .main { flex-direction: column; }
+    .sidebar { width: 100%; height: 50%; border-left: none; border-top: 1px solid var(--border); }
+    .video-container { height: 50%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+    </svg>
+    ESP32-CAM FPV
+  </div>
+  <div class="status-bar">
+    <div class="stat">
+      <div class="dot" id="statusDot"></div>
+      <span class="stat-value" id="statusText">Disconnected</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">FPS</span>
+      <span class="stat-value fps" id="fpsValue">0</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Frames</span>
+      <span class="stat-value" id="framesValue">0</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Dropped</span>
+      <span class="stat-value" id="droppedValue">0</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Data</span>
+      <span class="stat-value" id="dataValue">0 KB</span>
+    </div>
+  </div>
+</div>
+
+<div class="latency-indicator">
+  <div class="latency-bar" id="latencyBar"></div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <!-- VIDEO -->
+  <div class="video-container" id="videoContainer">
+    <canvas id="streamCanvas" width="640" height="480"></canvas>
+
+    <div class="video-overlay">
+      <div class="overlay-badge" id="liveBadge" style="display:none;">
+        <div class="rec-dot"></div>
+        LIVE
+      </div>
+    </div>
+
+    <div class="no-signal" id="noSignal">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="2" y="3" width="20" height="14" rx="2"/>
+        <line x1="8" y1="21" x2="16" y2="21"/>
+        <line x1="12" y1="17" x2="12" y2="21"/>
+        <line x1="2" y1="3" x2="22" y2="17" stroke-width="2"/>
+      </svg>
+      <p>Waiting for ESP32-CAM...</p>
+      <p style="font-size:11px; margin-top:4px; opacity:0.5;">Ensure firmware is running and connected to same network</p>
+    </div>
+
+    <button class="fullscreen-btn" id="fullscreenBtn" title="Toggle fullscreen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+        <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+      </svg>
+      Fullscreen
+    </button>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="sidebar" id="sidebar">
+
+    <!-- RESOLUTION -->
+    <div class="panel">
+      <div class="panel-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        Resolution
+      </div>
+      <div class="res-buttons">
+        <button class="res-btn active" data-res="0" onclick="setResolution(0)">
+          480p<br><span style="font-size:10px; font-weight:400; opacity:0.6;">640×480</span>
+        </button>
+        <button class="res-btn" data-res="1" onclick="setResolution(1)">
+          720p<br><span style="font-size:10px; font-weight:400; opacity:0.6;">1280×720</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- FLASH -->
+    <div class="panel">
+      <div class="panel-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+        </svg>
+        Flash LED
+      </div>
+      <div class="flash-control">
+        <button class="flash-toggle" id="flashToggle" onclick="toggleFlash()"></button>
+        <div class="flash-slider-wrap">
+          <input type="range" min="0" max="255" value="0" id="flashSlider"
+                 oninput="setFlash(this.value)">
+        </div>
+        <span class="range-value" id="flashValue">0</span>
+      </div>
+    </div>
+
+    <!-- IMAGE QUALITY -->
+    <div class="panel">
+      <div class="panel-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        Image Quality
+      </div>
+      <div class="control-row">
+        <span class="control-label">JPEG Quality</span>
+        <div class="control-right">
+          <input type="range" min="4" max="63" value="12" data-param="quality"
+                 oninput="sendControl('quality', this.value); updateVal(this)">
+          <span class="range-value">12</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- IMAGE ADJUSTMENTS -->
+    <div class="panel">
+      <div class="panel-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+        Image Adjustments
+      </div>
+      <div class="control-row">
+        <span class="control-label">Brightness</span>
+        <div class="control-right">
+          <input type="range" min="-2" max="2" value="0" data-param="brightness"
+                 oninput="sendControl('brightness', this.value); updateVal(this)">
+          <span class="range-value">0</span>
+        </div>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Contrast</span>
+        <div class="control-right">
+          <input type="range" min="-2" max="2" value="0" data-param="contrast"
+                 oninput="sendControl('contrast', this.value); updateVal(this)">
+          <span class="range-value">0</span>
+        </div>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Saturation</span>
+        <div class="control-right">
+          <input type="range" min="-2" max="2" value="0" data-param="saturation"
+                 oninput="sendControl('saturation', this.value); updateVal(this)">
+          <span class="range-value">0</span>
+        </div>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Sharpness</span>
+        <div class="control-right">
+          <input type="range" min="-2" max="2" value="0" data-param="sharpness"
+                 oninput="sendControl('sharpness', this.value); updateVal(this)">
+          <span class="range-value">0</span>
+        </div>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Special Effect</span>
+        <div class="control-right">
+          <select onchange="sendControl('special_effect', this.value)">
+            <option value="0">None</option>
+            <option value="1">Negative</option>
+            <option value="2">Grayscale</option>
+            <option value="3">Red Tint</option>
+            <option value="4">Green Tint</option>
+            <option value="5">Blue Tint</option>
+            <option value="6">Sepia</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- WHITE BALANCE -->
+    <div class="panel">
+      <div class="panel-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        White Balance
+      </div>
+      <div class="toggle-row">
+        <span class="control-label">AWB</span>
+        <button class="toggle-switch on" data-param="awb" onclick="toggleParam(this, 'awb')"></button>
+      </div>
+      <div class="toggle-row">
+        <span class="control-label">AWB Gain</span>
+        <button class="toggle-switch on" data-param="awb_gain" onclick="toggleParam(this, 'awb_gain')"></button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">WB Mode</span>
+        <div class="control-right">
+          <select onchange="sendControl('wb_mode', this.value)">
+            <option value="0">Auto</option>
+            <option value="1">Sunny</option>
+            <option value="2">Cloudy</option>
+            <option value="3">Office</option>
+            <option value="4">Home</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPOSURE -->
+    <div class="panel">
+      <div class="panel-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="22"/>
+          <path d="M12 2a10 10 0 0 1 0 20"/>
+        </svg>
+        Exposure
+      </div>
+      <div class="toggle-row">
+        <span class="control-label">Auto Exposure</span>
+        <button class="toggle-switch on" data-param="aec" onclick="toggleParam(this, 'aec')"></button>
+      </div>
+      <div class="toggle-row">
+        <span class="control-label">AEC DSP</span>
+        <button class="toggle-switch on" data-param="aec2" onclick="toggleParam(this, 'aec2')"></button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">AE Level</span>
+        <div class="control-right">
+          <input type="range" min="-2" max="2" value="0" data-param="ae_level"
+                 oninput="sendControl('ae_level', this.value); updateVal(this)">
+          <span class="range-value">0</span>
+        </div>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Exposure</span>
+        <div class="control-right">
+          <input type="range" min="0" max="1200" value="300" data-param="aec_value"
+                 oninput="sendControl('aec_value', this.value); updateVal(this)">
+          <span class="range-value">300</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- GAIN -->
+    <div class="panel">
+      <div class="panel-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+          <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+          <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+          <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+        </svg>
+        Gain Control
+      </div>
+      <div class="toggle-row">
+        <span class="control-label">Auto Gain</span>
+        <button class="toggle-switch on" data-param="agc" onclick="toggleParam(this, 'agc')"></button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Manual Gain</span>
+        <div class="control-right">
+          <input type="range" min="0" max="30" value="0" data-param="agc_gain"
+                 oninput="sendControl('agc_gain', this.value); updateVal(this)">
+          <span class="range-value">0</span>
+        </div>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Gain Ceiling</span>
+        <div class="control-right">
+          <select onchange="sendControl('gainceiling', this.value)">
+            <option value="0">2x</option>
+            <option value="1">4x</option>
+            <option value="2">8x</option>
+            <option value="3">16x</option>
+            <option value="4">32x</option>
+            <option value="5">64x</option>
+            <option value="6" selected>128x</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- CORRECTIONS -->
+    <div class="panel">
+      <div class="panel-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+        </svg>
+        Corrections
+      </div>
+      <div class="toggle-row">
+        <span class="control-label">BPC</span>
+        <button class="toggle-switch on" data-param="bpc" onclick="toggleParam(this, 'bpc')"></button>
+      </div>
+      <div class="toggle-row">
+        <span class="control-label">WPC</span>
+        <button class="toggle-switch on" data-param="wpc" onclick="toggleParam(this, 'wpc')"></button>
+      </div>
+      <div class="toggle-row">
+        <span class="control-label">Raw GMA</span>
+        <button class="toggle-switch on" data-param="raw_gma" onclick="toggleParam(this, 'raw_gma')"></button>
+      </div>
+      <div class="toggle-row">
+        <span class="control-label">Lens Correction</span>
+        <button class="toggle-switch on" data-param="lenc" onclick="toggleParam(this, 'lenc')"></button>
+      </div>
+    </div>
+
+    <!-- ORIENTATION -->
+    <div class="panel">
+      <div class="panel-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+        </svg>
+        Orientation
+      </div>
+      <div class="toggle-row">
+        <span class="control-label">H-Mirror</span>
+        <button class="toggle-switch" data-param="hmirror" onclick="toggleParam(this, 'hmirror')"></button>
+      </div>
+      <div class="toggle-row">
+        <span class="control-label">V-Flip</span>
+        <button class="toggle-switch" data-param="vflip" onclick="toggleParam(this, 'vflip')"></button>
+      </div>
+      <div class="toggle-row">
+        <span class="control-label">DCW (Downsize)</span>
+        <button class="toggle-switch on" data-param="dcw" onclick="toggleParam(this, 'dcw')"></button>
+      </div>
+      <div class="toggle-row">
+        <span class="control-label">Color Bar</span>
+        <button class="toggle-switch" data-param="colorbar" onclick="toggleParam(this, 'colorbar')"></button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ==================== WEBSOCKET ====================
+
+let ws = null;
+let reconnectTimer = null;
+const canvas = document.getElementById('streamCanvas');
+const ctx = canvas.getContext('2d');
+let frameCount = 0;
+let lastFpsTime = performance.now();
+let localFps = 0;
+let isConnected = false;
+
+function connect() {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${location.host}/ws`;
+
+  ws = new WebSocket(wsUrl);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    isConnected = true;
+    updateConnectionStatus(true);
+    clearTimeout(reconnectTimer);
+    console.log('WebSocket connected');
+  };
+
+  ws.onmessage = (event) => {
+    if (typeof event.data === 'string') {
+      // JSON stats message
+      try {
+        const stats = JSON.parse(event.data);
+        if (stats.type === 'stats') {
+          updateStats(stats);
+        }
+      } catch (e) {}
+    } else {
+      // Binary frame data (JPEG)
+      displayFrame(event.data);
+    }
+  };
+
+  ws.onclose = () => {
+    isConnected = false;
+    updateConnectionStatus(false);
+    console.log('WebSocket disconnected, reconnecting...');
+    reconnectTimer = setTimeout(connect, 1000);
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+}
+
+// ==================== FRAME DISPLAY ====================
+
+// Use a pool of Image objects and only display the most recent
+let pendingFrame = null;
+let isRendering = false;
+
+function displayFrame(jpegData) {
+  // Always keep only the latest frame - discard stale
+  const blob = new Blob([jpegData], { type: 'image/jpeg' });
+  const url = URL.createObjectURL(blob);
+
+  // If already rendering, just update the pending frame
+  if (isRendering) {
+    if (pendingFrame) {
+      URL.revokeObjectURL(pendingFrame);
+    }
+    pendingFrame = url;
+    return;
+  }
+
+  renderFrame(url);
+}
+
+function renderFrame(url) {
+  isRendering = true;
+  const img = new Image();
+
+  img.onload = () => {
+    // Resize canvas if needed
+    if (canvas.width !== img.width || canvas.height !== img.height) {
+      canvas.width = img.width;
+      canvas.height = img.height;
+    }
+
+    ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+
+    // Update FPS
+    frameCount++;
+    const now = performance.now();
+    if (now - lastFpsTime >= 1000) {
+      localFps = Math.round(frameCount * 1000 / (now - lastFpsTime));
+      frameCount = 0;
+      lastFpsTime = now;
+      document.getElementById('fpsValue').textContent = localFps;
+    }
+
+    // Show live badge
+    document.getElementById('noSignal').style.display = 'none';
+    document.getElementById('liveBadge').style.display = 'flex';
+
+    // Update latency bar based on FPS
+    updateLatencyBar(localFps);
+
+    isRendering = false;
+
+    // Render pending frame if any (always show latest)
+    if (pendingFrame) {
+      const next = pendingFrame;
+      pendingFrame = null;
+      renderFrame(next);
+    }
+  };
+
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    isRendering = false;
+
+    if (pendingFrame) {
+      const next = pendingFrame;
+      pendingFrame = null;
+      renderFrame(next);
+    }
+  };
+
+  img.src = url;
+}
+
+// ==================== CONTROLS ====================
+
+function sendControl(param, value) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({
+    action: 'control',
+    param: param,
+    value: parseInt(value)
+  }));
+}
+
+function setResolution(res) {
+  sendControl('resolution', res);
+  document.querySelectorAll('.res-btn').forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.res) === res);
+  });
+}
+
+function toggleFlash() {
+  const btn = document.getElementById('flashToggle');
+  const slider = document.getElementById('flashSlider');
+  const isOn = btn.classList.toggle('on');
+
+  if (isOn) {
+    const val = parseInt(slider.value) || 128;
+    slider.value = val;
+    setFlash(val);
+  } else {
+    setFlash(0);
+  }
+}
+
+function setFlash(val) {
+  val = parseInt(val);
+  document.getElementById('flashValue').textContent = val;
+  sendControl('flash', val);
+
+  const btn = document.getElementById('flashToggle');
+  if (val > 0) {
+    btn.classList.add('on');
+  } else {
+    btn.classList.remove('on');
+  }
+}
+
+function toggleParam(btn, param) {
+  const isOn = btn.classList.toggle('on');
+  sendControl(param, isOn ? 1 : 0);
+}
+
+function updateVal(input) {
+  const valueSpan = input.parentElement.querySelector('.range-value');
+  if (valueSpan) valueSpan.textContent = input.value;
+}
+
+// ==================== STATUS ====================
+
+function updateConnectionStatus(connected) {
+  const dot = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+
+  if (connected) {
+    dot.classList.add('connected');
+    text.textContent = 'Connected';
+    text.style.color = 'var(--accent2)';
+  } else {
+    dot.classList.remove('connected');
+    text.textContent = 'Disconnected';
+    text.style.color = 'var(--danger)';
+    document.getElementById('liveBadge').style.display = 'none';
+    document.getElementById('noSignal').style.display = '';
+  }
+}
+
+function updateStats(stats) {
+  document.getElementById('framesValue').textContent = stats.frames || 0;
+  document.getElementById('droppedValue').textContent = stats.dropped || 0;
+
+  const bytes = stats.bytes || 0;
+  if (bytes > 1048576) {
+    document.getElementById('dataValue').textContent = (bytes / 1048576).toFixed(1) + ' MB';
+  } else {
+    document.getElementById('dataValue').textContent = (bytes / 1024).toFixed(0) + ' KB';
+  }
+}
+
+function updateLatencyBar(fps) {
+  const bar = document.getElementById('latencyBar');
+  const maxFps = 30;
+  const pct = Math.min(100, (fps / maxFps) * 100);
+  bar.style.width = pct + '%';
+
+  bar.classList.remove('warn', 'bad');
+  if (fps < 10) bar.classList.add('bad');
+  else if (fps < 20) bar.classList.add('warn');
+}
+
+// ==================== FULLSCREEN ====================
+
+document.getElementById('fullscreenBtn').addEventListener('click', () => {
+  const container = document.getElementById('videoContainer');
+  if (!document.fullscreenElement) {
+    container.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen();
+  }
+});
+
+// ==================== POLL STATS ====================
+
+async function pollStats() {
+  try {
+    const res = await fetch('/api/stats');
+    const stats = await res.json();
+    updateStats({ frames: stats.frames_received, dropped: stats.frames_dropped, bytes: stats.bytes_received });
+
+    if (stats.esp32_connected) {
+      const dot = document.getElementById('statusDot');
+      if (!dot.classList.contains('connected') && isConnected) {
+        dot.classList.add('connected');
+      }
+    }
+  } catch (e) {}
+}
+
+setInterval(pollStats, 2000);
+
+// ==================== INIT ====================
+
+connect();
+</script>
+</body>
+</html>
