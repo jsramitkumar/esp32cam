@@ -24,9 +24,18 @@
 // ─────────────────── USER CONFIG ───────────────────
 #define CAMERA_NAME      "Drone-FPV-1"      // Unique name shown in NVR
 
+<<<<<<< HEAD
 const char* WIFI_SSID     = "Airtel_High Link";     // ← change
 const char* WIFI_PASSWORD = "Shell@1245"; // ← change
 const char* SERVER_IP     = "192.168.1.4";// ← change to server PC IP
+=======
+// Camera identity - shown in OSD on streaming server
+#define CAMERA_NAME "Drone-FPV-2"    // Change per camera
+
+// WiFi credentials - CHANGE THESE
+const char* WIFI_SSID     = "Airtel_High Link";
+const char* WIFI_PASSWORD = "Shell@1245";
+>>>>>>> 04800748ba083d03cb114330e14b25872fe506cc
 
 const uint16_t SERVER_PORT  = 9000;   // server UDP recv
 const uint16_t CONTROL_PORT = 9001;   // ESP32 listens for commands
@@ -64,6 +73,7 @@ const uint16_t LOCAL_PORT   = 9002;   // ESP32 send / ACK recv port
 #define HREF_GPIO_NUM    23
 #define PCLK_GPIO_NUM    22
 
+<<<<<<< HEAD
 // ─────────────────── PROTOCOL MAGIC ────────────────
 #define M_FRAME0  0xCA
 #define M_FRAME1  0x4D
@@ -73,6 +83,18 @@ const uint16_t LOCAL_PORT   = 9002;   // ESP32 send / ACK recv port
 #define M_CTRL1   0x4E
 #define M_TELE0   0x54
 #define M_TELE1   0x45
+=======
+// ==================== PROTOCOL MAGIC ====================
+#define MAGIC_FRAME_0       0xCA
+#define MAGIC_FRAME_1       0x4D
+#define MAGIC_ACK_0         0xAC
+#define MAGIC_ACK_1         0x4B
+#define MAGIC_CTRL_0        0xC0
+#define MAGIC_CTRL_1        0x4D
+// Telemetry magic
+#define MAGIC_TELE_0        0x54
+#define MAGIC_TELE_1        0x45
+>>>>>>> 04800748ba083d03cb114330e14b25872fe506cc
 
 // ─────────────────── COMMANDS ──────────────────────
 #define CMD_RESOLUTION   0x01
@@ -101,6 +123,7 @@ const uint16_t LOCAL_PORT   = 9002;   // ESP32 send / ACK recv port
 #define CMD_SPECIAL      0x63
 #define CMD_FLASH        0xF0
 
+<<<<<<< HEAD
 // ─────────────────── GLOBALS ───────────────────────
 WiFiUDP udpSend;
 WiFiUDP udpCtrl;
@@ -112,6 +135,21 @@ unsigned long lastFrame   = 0;
 unsigned long lastWifiChk = 0;
 unsigned long framePeriod = FRAME_INTERVAL;
 bool streamActive         = true;
+=======
+// ==================== GLOBALS ===========================
+WiFiUDP udpSend;       // For sending frames
+WiFiUDP udpControl;    // For receiving controls
+uint32_t frameId = 0;
+// Telemetry / FPS tracking
+uint32_t espFpsCount   = 0;
+unsigned long espFpsLastTime = 0;
+uint8_t  espFpsValue   = 0;
+uint8_t packetBuffer[PACKET_HEADER_SIZE + CHUNK_PAYLOAD_SIZE];
+uint8_t ackBuffer[16];
+uint8_t controlBuffer[64];
+bool streamActive = true;
+uint8_t currentFlashBrightness = 0;
+>>>>>>> 04800748ba083d03cb114330e14b25872fe506cc
 
 // Pre-allocated send buffer – avoids per-frame heap_caps_malloc/free
 // which causes PSRAM fragmentation and eventual alloc failure after ~2 min
@@ -208,6 +246,7 @@ void loop() {
     Serial.printf("SKIP: frame %u bytes > buf %u\n", jpegLen, JPEG_BUF_SIZE);
     return;
   }
+<<<<<<< HEAD
   memcpy(jpegBuf, fb->buf, jpegLen);
   esp_camera_fb_return(fb);    // ← free DMA slot BEFORE any network I/O
 
@@ -225,6 +264,22 @@ void loop() {
 
   // ── Telemetry ────────────────────────────────────
   if (frameId > 0 && frameId % TELEM_EVERY == 0) sendTelemetry();
+=======
+
+  // Track ESP-side FPS
+  espFpsCount++;
+  unsigned long nowMs = millis();
+  if (nowMs - espFpsLastTime >= 1000) {
+    espFpsValue   = (uint8_t)min((uint32_t)255, espFpsCount);
+    espFpsCount   = 0;
+    espFpsLastTime = nowMs;
+  }
+
+  // Send telemetry every 30 frames
+  if (frameId > 0 && frameId % 30 == 0) {
+    sendTelemetry();
+  }
+>>>>>>> 04800748ba083d03cb114330e14b25872fe506cc
 }
 
 // ═══════════════════ CAMERA INIT ═════════════════
@@ -321,9 +376,60 @@ void initFlash() {
   ledc_channel_config(&c);
 }
 
+<<<<<<< HEAD
 void setFlash(uint8_t v) {
   ledc_set_duty(LEDC_LOW_SPEED_MODE, FLASH_CHANNEL, v);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, FLASH_CHANNEL);
+=======
+// ==================== TELEMETRY ========================
+void sendTelemetry() {
+  // Packet: [TELE:2][name_len:1][name:N][rssi:int8][heap_kb:uint16 BE][uptime_sec:uint32 BE][fps:uint8][res:uint8]
+  uint8_t buf[64];
+  uint8_t nameLen = (uint8_t)min((int)strlen(CAMERA_NAME), 20);
+
+  uint8_t pos = 0;
+  buf[pos++] = MAGIC_TELE_0;
+  buf[pos++] = MAGIC_TELE_1;
+  buf[pos++] = nameLen;
+  memcpy(buf + pos, CAMERA_NAME, nameLen);
+  pos += nameLen;
+
+  // RSSI as signed byte
+  int8_t rssi = (int8_t)constrain(WiFi.RSSI(), -128, 127);
+  buf[pos++] = (uint8_t)rssi;
+
+  // Free heap in KB (uint16 big-endian)
+  uint16_t heapKb = (uint16_t)(ESP.getFreeHeap() / 1024);
+  buf[pos++] = (heapKb >> 8) & 0xFF;
+  buf[pos++] = heapKb & 0xFF;
+
+  // Uptime in seconds (uint32 big-endian)
+  uint32_t uptimeSec = millis() / 1000;
+  buf[pos++] = (uptimeSec >> 24) & 0xFF;
+  buf[pos++] = (uptimeSec >> 16) & 0xFF;
+  buf[pos++] = (uptimeSec >>  8) & 0xFF;
+  buf[pos++] =  uptimeSec        & 0xFF;
+
+  // FPS
+  buf[pos++] = espFpsValue;
+
+  // Resolution code: 0=VGA, 1=HD
+  sensor_t* s = esp_camera_sensor_get();
+  uint8_t resCode = 0;
+  if (s) resCode = (s->status.framesize == FRAMESIZE_HD) ? 1 : 0;
+  buf[pos++] = resCode;
+
+  udpSend.beginPacket(SERVER_IP, SERVER_PORT);
+  udpSend.write(buf, pos);
+  udpSend.endPacket();
+}
+
+void setFlashBrightness(uint8_t brightness) {
+  currentFlashBrightness = brightness;
+  ledc_set_duty(LEDC_LOW_SPEED_MODE, FLASH_LED_CHANNEL, brightness);
+  ledc_update_duty(LEDC_LOW_SPEED_MODE, FLASH_LED_CHANNEL);
+  Serial.printf("Flash brightness: %d\n", brightness);
+>>>>>>> 04800748ba083d03cb114330e14b25872fe506cc
 }
 
 // ═══════════════════ TELEMETRY ════════════════════

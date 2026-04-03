@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<<<<<<< HEAD
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ESP32-CAM NVR</title>
 <style>
@@ -274,11 +275,394 @@ select{cursor:pointer}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
+=======
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ESP32-CAM FPV</title>
+<style>
+/* ════════════════════ TOKENS ════════════════════ */
+:root {
+  --bg:        #06070c;
+  --surface:   #0c0e18;
+  --surface2:  #11142060;
+  --border:    #1c2035;
+  --border2:   #252840;
+  --accent:    #00ccf5;
+  --accent-d:  #0099bb;
+  --green:     #00e57a;
+  --yellow:    #ffc107;
+  --red:       #ff3356;
+  --text:      #b8bdd2;
+  --text-dim:  #4e5470;
+  --text-bright:#e2e6f6;
+  --radius:    8px;
+  --radius-sm: 4px;
+  --topbar-h:  50px;
+  --sidebar-w: 310px;
+  --bottombar-h:52px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{
+  height:100%;background:var(--bg);color:var(--text);
+  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+  -webkit-tap-highlight-color:transparent;overflow:hidden;
+}
+
+/* ════════════════════ SCROLLBAR ════════════════════ */
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+
+/* ════════════════════ TOPBAR ════════════════════ */
+#topbar{
+  position:fixed;top:0;left:0;right:0;
+  height:var(--topbar-h);
+  display:flex;align-items:center;gap:10px;padding:0 12px;
+  background:rgba(6,7,12,.96);
+  border-bottom:1px solid var(--border);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  z-index:200;
+  user-select:none;
+}
+.logo{
+  font-size:15px;font-weight:800;letter-spacing:.5px;
+  color:var(--accent);white-space:nowrap;flex-shrink:0;
+}
+.logo em{color:var(--green);font-style:normal;}
+
+/* camera tabs */
+#camTabs{
+  display:flex;gap:4px;flex:1;
+  overflow-x:auto;min-width:0;
+}
+#camTabs::-webkit-scrollbar{display:none;}
+.cam-tab{
+  display:flex;align-items:center;gap:5px;
+  padding:4px 10px;
+  border:1px solid var(--border);background:transparent;
+  color:var(--text-dim);font-size:11px;font-weight:700;
+  border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap;
+  transition:all .15s;flex-shrink:0;
+}
+.cam-tab:hover{border-color:var(--accent);color:var(--accent);}
+.cam-tab.active{background:rgba(0,204,245,.12);border-color:var(--accent);color:var(--accent);}
+.cam-tab.off{opacity:.4;}
+.cam-tab .td{width:6px;height:6px;border-radius:50%;background:var(--text-dim);}
+.cam-tab.live .td{background:var(--green);animation:blink 1.6s infinite;}
+#tabAllTd{background:var(--accent);}
+
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* topbar actions */
+#topActions{
+  display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:auto;
+}
+.icon-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:34px;height:34px;padding:0;
+  border:1px solid var(--border);background:transparent;
+  color:var(--text-dim);border-radius:var(--radius-sm);
+  cursor:pointer;transition:all .15s;flex-shrink:0;
+}
+.icon-btn svg{width:16px;height:16px;pointer-events:none;}
+.icon-btn:hover{border-color:var(--accent);color:var(--accent);}
+.icon-btn.on{background:rgba(0,204,245,.15);border-color:var(--accent);color:var(--accent);}
+.icon-btn.rec-on{background:rgba(255,51,86,.15);border-color:var(--red);color:var(--red);}
+.icon-btn.rec-on svg{animation:blink .8s infinite;}
+
+#liveBadge{
+  font-size:10px;font-weight:800;color:var(--text-dim);letter-spacing:.5px;
+  padding:2px 7px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  white-space:nowrap;
+}
+#liveBadge.on{color:var(--green);border-color:var(--green);}
+
+/* ════════════════════ MAIN AREA ════════════════════ */
+#main{
+  position:fixed;
+  top:var(--topbar-h);bottom:0;left:0;right:0;
+  display:flex;overflow:hidden;
+}
+
+/* ════════════════════ VIDEO AREA ════════════════════ */
+#videoWrap{
+  flex:1;min-width:0;display:flex;flex-direction:column;
+  overflow:hidden;position:relative;background:#000;
+}
+
+/* grid */
+#gridView{
+  flex:1;display:grid;
+  grid-template-columns:1fr;
+  gap:2px;background:#000;overflow:hidden;
+}
+#gridView.c2{grid-template-columns:1fr 1fr;}
+#gridView.c3{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;}
+#gridView.c4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;}
+#gridView.c5,#gridView.c6{grid-template-columns:1fr 1fr 1fr;}
+
+.cam-cell{
+  position:relative;background:#02040a;
+  overflow:hidden;cursor:pointer;min-height:80px;
+}
+.cam-cell canvas{width:100%;height:100%;object-fit:contain;display:block;}
+.cam-cell:hover .cell-btn-row{opacity:1;}
+
+.cell-btn-row{
+  position:absolute;bottom:6px;right:6px;
+  display:flex;gap:4px;
+  opacity:0;transition:opacity .2s;
+}
+.cell-action{
+  padding:3px 7px;font-size:10px;font-weight:700;
+  background:rgba(0,0,0,.75);border:1px solid rgba(255,255,255,.12);
+  color:var(--text);border-radius:3px;cursor:pointer;
+  transition:all .15s;
+}
+.cell-action:hover{background:rgba(0,204,245,.2);border-color:var(--accent);color:var(--accent);}
+.cell-action.rec-act{color:var(--red);}
+.cell-action.rec-act:hover{background:rgba(255,51,86,.2);border-color:var(--red);}
+
+/* focus */
+#focusView{
+  flex:1;display:none;align-items:center;justify-content:center;
+  background:#000;position:relative;
+}
+#focusView.act{display:flex;}
+#focusCanvas{max-width:100%;max-height:100%;}
+
+/* no-signal placeholder */
+.nosig{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:100%;color:var(--text-dim);
+  pointer-events:none;position:absolute;inset:0;
+}
+.nosig svg{width:36px;height:36px;opacity:.15;margin-bottom:8px;}
+.nosig p{font-size:11px;}
+
+/* ════════════════════ SIDEBAR ════════════════════ */
+#sidebar{
+  width:var(--sidebar-w);flex-shrink:0;
+  background:var(--surface);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;
+  overflow-y:auto;overflow-x:hidden;
+  transition:transform .25s cubic-bezier(.4,0,.2,1);
+}
+#sidebar.hidden{display:none;}
+
+/* section */
+.sec{border-bottom:1px solid var(--border);padding:10px 13px;}
+.sec-hdr{
+  font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:1.8px;
+  color:var(--text-dim);margin-bottom:9px;display:flex;align-items:center;gap:5px;
+}
+.sec-hdr svg{width:11px;height:11px;}
+
+/* target cam row */
+.tgt-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;}
+select.mini-sel{
+  flex:1;background:var(--bg);color:var(--text);
+  border:1px solid var(--border2);border-radius:var(--radius-sm);
+  padding:5px 8px;font-size:11px;cursor:pointer;outline:none;
+}
+select.mini-sel:focus{border-color:var(--accent);}
+.cam-status-badge{
+  font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700;
+  background:rgba(255,51,86,.12);color:var(--red);border:1px solid rgba(255,51,86,.2);
+}
+.cam-status-badge.live{background:rgba(0,229,122,.1);color:var(--green);border-color:rgba(0,229,122,.2);}
+
+/* info chipset */
+#camInfoBox{
+  display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;
+}
+.chip{
+  font-size:9.5px;padding:2px 7px;border-radius:3px;
+  background:rgba(255,255,255,.04);border:1px solid var(--border2);color:var(--text-dim);
+  display:flex;align-items:center;gap:3px;
+}
+.chip svg{width:9px;height:9px;}
+.chip.g{color:var(--green);}
+.chip.y{color:var(--yellow);}
+.chip.r{color:var(--red);}
+
+/* recording controls */
+.rec-panel{
+  display:flex;gap:6px;align-items:center;margin-bottom:8px;
+}
+.rec-btn{
+  flex:1;padding:7px 10px;border-radius:var(--radius-sm);
+  font-size:11px;font-weight:700;cursor:pointer;border:none;
+  transition:all .15s;display:flex;align-items:center;justify-content:center;gap:5px;
+}
+.rec-btn svg{width:12px;height:12px;}
+.rec-btn.start{background:var(--red);color:#fff;}
+.rec-btn.start:hover{background:#ff1a3c;}
+.rec-btn.stop{background:rgba(255,51,86,.12);color:var(--red);border:1px solid rgba(255,51,86,.3);}
+.rec-btn.stop:hover{background:rgba(255,51,86,.25);}
+.rec-btn.down{background:rgba(0,229,122,.1);color:var(--green);border:1px solid rgba(0,229,122,.25);}
+.rec-btn.down:hover{background:rgba(0,229,122,.2);}
+.rec-btn:disabled{opacity:.3;cursor:not-allowed;}
+.rec-status{margin-top:6px;}
+.rec-info{font-size:10px;color:var(--text-dim);}
+.rec-info b{color:var(--text-bright);}
+.rec-info.active{color:var(--red);}
+.rec-info.active b{color:var(--red);}
+.snap-btn{
+  width:100%;padding:7px;border-radius:var(--radius-sm);
+  font-size:11px;font-weight:700;cursor:pointer;
+  background:rgba(0,204,245,.08);color:var(--accent);
+  border:1px solid rgba(0,204,245,.2);
+  transition:all .15s;display:flex;align-items:center;justify-content:center;gap:5px;
+}
+.snap-btn svg{width:12px;height:12px;}
+.snap-btn:hover{background:rgba(0,204,245,.18);}
+
+/* resolution */
+.res-row{display:flex;gap:6px;}
+.res-btn{
+  flex:1;padding:7px 6px;border:1px solid var(--border2);background:transparent;
+  color:var(--text);border-radius:var(--radius-sm);font-size:11px;font-weight:700;
+  cursor:pointer;text-align:center;transition:all .15s;
+}
+.res-btn:hover{border-color:var(--accent);color:var(--accent);}
+.res-btn.active{background:var(--accent);color:#000;border-color:var(--accent);}
+.res-sub{font-size:9px;font-weight:400;opacity:.55;display:block;margin-top:1px;}
+
+/* flash */
+.flash-row{display:flex;align-items:center;gap:8px;}
+.tog{
+  width:38px;height:21px;border-radius:11px;background:var(--border2);
+  border:none;cursor:pointer;position:relative;flex-shrink:0;transition:background .2s;
+}
+.tog::after{
+  content:'';position:absolute;width:15px;height:15px;border-radius:50%;
+  background:var(--text-dim);top:3px;left:3px;transition:all .2s;
+}
+.tog.on{background:var(--accent);}
+.tog.on::after{left:20px;background:#000;}
+
+/* range inputs */
+input[type=range]{
+  -webkit-appearance:none;appearance:none;flex:1;height:3px;
+  border-radius:2px;background:var(--border2);outline:none;cursor:pointer;min-width:60px;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+  background:var(--accent);cursor:pointer;border:2px solid var(--bg);
+}
+input[type=range]::-moz-range-thumb{
+  width:13px;height:13px;border-radius:50%;
+  background:var(--accent);cursor:pointer;border:2px solid var(--bg);
+}
+
+.ctrl-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;}
+.ctrl-row:last-child{margin-bottom:0;}
+.ctrl-lbl{font-size:11px;color:var(--text);min-width:82px;flex-shrink:0;}
+.ctrl-r{display:flex;align-items:center;gap:6px;flex:1;justify-content:flex-end;}
+.rval{font-size:10px;font-family:monospace;color:var(--text-dim);min-width:24px;text-align:right;}
+
+.tog-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;}
+.tog-row:last-child{margin-bottom:0;}
+.tog-sm{
+  width:32px;height:18px;border-radius:9px;background:var(--border2);
+  border:none;cursor:pointer;position:relative;flex-shrink:0;transition:background .2s;
+}
+.tog-sm::after{
+  content:'';position:absolute;width:12px;height:12px;border-radius:50%;
+  background:var(--text-dim);top:3px;left:3px;transition:all .2s;
+}
+.tog-sm.on{background:var(--accent);}
+.tog-sm.on::after{left:17px;background:#000;}
+
+select.ctrl-sel{
+  background:var(--bg);color:var(--text);border:1px solid var(--border2);
+  border-radius:3px;padding:4px 6px;font-size:10px;cursor:pointer;outline:none;max-width:130px;
+}
+
+/* ════════════════════ MOBILE BOTTOM BAR ════════════════════ */
+#bottomBar{
+  display:none;
+  position:fixed;bottom:0;left:0;right:0;
+  height:var(--bottombar-h);
+  background:rgba(6,7,12,.96);
+  border-top:1px solid var(--border);
+  backdrop-filter:blur(12px);
+  z-index:200;
+  align-items:stretch;
+}
+.bb-btn{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;background:transparent;border:none;color:var(--text-dim);
+  font-size:9px;font-weight:700;cursor:pointer;letter-spacing:.3px;
+  transition:color .15s;border-right:1px solid var(--border);
+}
+.bb-btn:last-child{border-right:none;}
+.bb-btn svg{width:18px;height:18px;}
+.bb-btn.on,.bb-btn:active{color:var(--accent);}
+.bb-btn.rec-on{color:var(--red);}
+
+/* ════════════════════ MOBILE SHEET ════════════════════ */
+#mobileSheet{
+  display:none;
+  position:fixed;bottom:var(--bottombar-h);left:0;right:0;
+  max-height:65vh;overflow-y:auto;
+  background:var(--surface);border-top:1px solid var(--border);
+  z-index:190;transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);
+}
+#mobileSheet.open{transform:translateY(0);}
+.sheet-handle{
+  width:40px;height:4px;background:var(--border2);border-radius:2px;
+  margin:10px auto 6px;flex-shrink:0;
+}
+
+/* ════════════════════ TOAST ════════════════════ */
+#toast{
+  position:fixed;bottom:70px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:rgba(18,20,32,.96);border:1px solid var(--border2);
+  color:var(--text-bright);font-size:12px;font-weight:600;
+  padding:8px 16px;border-radius:6px;
+  opacity:0;transition:all .25s;pointer-events:none;z-index:999;white-space:nowrap;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast.ok{border-color:rgba(0,229,122,.3);color:var(--green);}
+#toast.err{border-color:rgba(255,51,86,.3);color:var(--red);}
+
+/* ════════════════════ LOADING SPINNER ════════════════════ */
+.spinner{
+  border:2px solid var(--border2);border-top-color:var(--accent);
+  border-radius:50%;width:14px;height:14px;
+  animation:spin .6s linear infinite;display:inline-block;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ════════════════════ RESPONSIVE BREAKPOINTS ════════════════════ */
+/* Tablet ≤ 900 */
+@media(max-width:900px){
+  :root{--sidebar-w:260px;}
+}
+
+/* Mobile ≤ 640 */
+@media(max-width:640px){
+  :root{--topbar-h:44px;--bottombar-h:56px;}
+  #topbar{padding:0 8px;gap:6px;}
+  .logo{font-size:13px;}
+  #camTabs{display:none;}     /* tabs on bottom bar on mobile */
+  #topActions .icon-btn[data-id="sbToggle"],
+  #topActions .icon-btn[data-id="osd"]{display:none;}
+  #liveBadge{display:none;}
+  #bottomBar{display:flex;}
+  #sidebar{display:none;}    /* sidebar replaced by mobile sheet */
+  #mobileSheet{display:block;}
+  #main{bottom:var(--bottombar-h);}
+}
+>>>>>>> 04800748ba083d03cb114330e14b25872fe506cc
 </style>
 </head>
 <body>
 <div id="app">
 
+<<<<<<< HEAD
 <!-- ╔══ TOPBAR ══════════════════════════════════════════════════╗ -->
 <div id="topbar">
   <div class="logo">
@@ -581,9 +965,278 @@ select{cursor:pointer}
       <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 12 19.79 19.79 0 0 1 1.07 3.46 2 2 0 0 1 3.05 1.25h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.38-.38a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 21 16.92z"/>
     </svg>Stream
   </button>
+=======
+<!-- ══════════ TOPBAR ══════════ -->
+<div id="topbar">
+  <div class="logo">ESP32<em>CAM</em></div>
+
+  <div id="camTabs">
+    <button class="cam-tab active" id="tabAll" onclick="showGrid()">
+      <div class="td" id="tabAllTd"></div>GRID
+    </button>
+  </div>
+
+  <div id="topActions">
+    <span id="liveBadge">0 LIVE</span>
+
+    <button class="icon-btn on" id="osdBtn" data-id="osd" title="Toggle OSD" onclick="toggleOSD()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="2" y="3" width="20" height="14" rx="2"/>
+        <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+        <circle cx="8" cy="10" r="1.5" fill="currentColor"/><line x1="11" y1="10" x2="17" y2="10"/>
+        <line x1="11" y1="7" x2="17" y2="7"/>
+      </svg>
+    </button>
+
+    <button class="icon-btn" id="recBtn" data-id="rec" title="Record" onclick="toggleRec()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/>
+      </svg>
+    </button>
+
+    <button class="icon-btn" id="snapBtn" title="Snapshot" onclick="doSnap()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+    </button>
+
+    <button class="icon-btn" id="sbToggle" data-id="sbToggle" title="Controls" onclick="toggleSidebar()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="17" y2="18"/>
+        <circle cx="19" cy="6" r="2" fill="currentColor"/><circle cx="17" cy="12" r="2" fill="currentColor"/>
+        <circle cx="20" cy="18" r="2" fill="currentColor"/>
+      </svg>
+    </button>
+
+    <button class="icon-btn" title="Fullscreen" onclick="toggleFS()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+        <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+      </svg>
+    </button>
+  </div>
+>>>>>>> 04800748ba083d03cb114330e14b25872fe506cc
 </div>
 
+<!-- ══════════ MAIN ══════════ -->
+<div id="main">
+
+  <!-- Video -->
+  <div id="videoWrap">
+    <div id="gridView"></div>
+    <div id="focusView">
+      <canvas id="focusCanvas" width="640" height="480"></canvas>
+    </div>
+  </div>
+
+  <!-- Desktop/tablet sidebar -->
+  <div id="sidebar" class="hidden">
+    <!-- Camera selector -->
+    <div class="sec">
+      <div class="sec-hdr">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+        </svg>Camera
+      </div>
+      <div class="tgt-row">
+        <span style="font-size:11px;color:var(--text-dim)">Target</span>
+        <select class="mini-sel" id="ctrlSel" onchange="onCtrlCamChange(+this.value)">
+          <option value="">— no cameras —</option>
+        </select>
+        <span class="cam-status-badge" id="camBadge">OFFLINE</span>
+      </div>
+      <div id="camInfoBox" style="margin-top:7px;"></div>
+    </div>
+
+    <!-- Recording -->
+    <div class="sec">
+      <div class="sec-hdr">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/>
+        </svg>Record / Capture
+      </div>
+      <div class="rec-panel">
+        <button class="rec-btn start" id="recStartBtn" onclick="recStart()">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
+          REC
+        </button>
+        <button class="rec-btn stop" id="recStopBtn" onclick="recStop()" disabled>
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+          STOP
+        </button>
+      </div>
+      <div id="recStatus" class="rec-status">
+        <div class="rec-info" id="recInfo">Not recording</div>
+      </div>
+      <div style="margin-top:8px;">
+        <button class="snap-btn" onclick="doSnap()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+          Snapshot (JPEG)
+        </button>
+      </div>
+    </div>
+
+    <!-- Resolution -->
+    <div class="sec">
+      <div class="sec-hdr">Resolution</div>
+      <div class="res-row">
+        <button class="res-btn active" data-r="0" onclick="setRes(0)">
+          480p<span class="res-sub">640×480</span>
+        </button>
+        <button class="res-btn" data-r="1" onclick="setRes(1)">
+          720p<span class="res-sub">1280×720</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Flash -->
+    <div class="sec">
+      <div class="sec-hdr">Flash LED</div>
+      <div class="flash-row">
+        <button class="tog" id="flashTog" onclick="toggleFlash()"></button>
+        <input type="range" min="0" max="255" value="0" id="flashSlider" oninput="setFlash(+this.value)">
+        <span class="rval" id="flashVal">0</span>
+      </div>
+    </div>
+
+    <!-- Quality -->
+    <div class="sec">
+      <div class="sec-hdr">JPEG Quality</div>
+      <div class="ctrl-row">
+        <span class="ctrl-lbl">Quality</span>
+        <div class="ctrl-r">
+          <input type="range" min="4" max="63" value="12" oninput="C('quality',+this.value);U(this)">
+          <span class="rval">12</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Image -->
+    <div class="sec">
+      <div class="sec-hdr">Image</div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Brightness</span><div class="ctrl-r">
+        <input type="range" min="-2" max="2" value="0" oninput="C('brightness',+this.value);U(this)"><span class="rval">0</span></div></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Contrast</span><div class="ctrl-r">
+        <input type="range" min="-2" max="2" value="0" oninput="C('contrast',+this.value);U(this)"><span class="rval">0</span></div></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Saturation</span><div class="ctrl-r">
+        <input type="range" min="-2" max="2" value="0" oninput="C('saturation',+this.value);U(this)"><span class="rval">0</span></div></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Sharpness</span><div class="ctrl-r">
+        <input type="range" min="-2" max="2" value="0" oninput="C('sharpness',+this.value);U(this)"><span class="rval">0</span></div></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Effect</span><div class="ctrl-r">
+        <select class="ctrl-sel" onchange="C('special_effect',+this.value)">
+          <option value="0">None</option><option value="1">Negative</option>
+          <option value="2">Grayscale</option><option value="3">Red</option>
+          <option value="4">Green</option><option value="5">Blue</option>
+          <option value="6">Sepia</option>
+        </select></div></div>
+    </div>
+
+    <!-- White Balance -->
+    <div class="sec">
+      <div class="sec-hdr">White Balance</div>
+      <div class="tog-row"><span class="ctrl-lbl">AWB</span><button class="tog-sm on" onclick="T(this,'awb')"></button></div>
+      <div class="tog-row"><span class="ctrl-lbl">AWB Gain</span><button class="tog-sm on" onclick="T(this,'awb_gain')"></button></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">WB Mode</span><div class="ctrl-r">
+        <select class="ctrl-sel" onchange="C('wb_mode',+this.value)">
+          <option value="0">Auto</option><option value="1">Sunny</option>
+          <option value="2">Cloudy</option><option value="3">Office</option><option value="4">Home</option>
+        </select></div></div>
+    </div>
+
+    <!-- Exposure -->
+    <div class="sec">
+      <div class="sec-hdr">Exposure</div>
+      <div class="tog-row"><span class="ctrl-lbl">Auto Exposure</span><button class="tog-sm on" onclick="T(this,'aec')"></button></div>
+      <div class="tog-row"><span class="ctrl-lbl">AEC DSP</span><button class="tog-sm on" onclick="T(this,'aec2')"></button></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">AE Level</span><div class="ctrl-r">
+        <input type="range" min="-2" max="2" value="0" oninput="C('ae_level',+this.value);U(this)"><span class="rval">0</span></div></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Exposure</span><div class="ctrl-r">
+        <input type="range" min="0" max="1200" value="300" oninput="C('aec_value',+this.value);U(this)"><span class="rval">300</span></div></div>
+    </div>
+
+    <!-- Gain -->
+    <div class="sec">
+      <div class="sec-hdr">Gain</div>
+      <div class="tog-row"><span class="ctrl-lbl">Auto Gain</span><button class="tog-sm on" onclick="T(this,'agc')"></button></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Manual Gain</span><div class="ctrl-r">
+        <input type="range" min="0" max="30" value="0" oninput="C('agc_gain',+this.value);U(this)"><span class="rval">0</span></div></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Ceiling</span><div class="ctrl-r">
+        <select class="ctrl-sel" onchange="C('gainceiling',+this.value)">
+          <option value="0">2×</option><option value="1">4×</option><option value="2">8×</option>
+          <option value="3">16×</option><option value="4">32×</option><option value="5">64×</option>
+          <option value="6" selected>128×</option>
+        </select></div></div>
+    </div>
+
+    <!-- Corrections -->
+    <div class="sec">
+      <div class="sec-hdr">Corrections</div>
+      <div class="tog-row"><span class="ctrl-lbl">BPC</span><button class="tog-sm on" onclick="T(this,'bpc')"></button></div>
+      <div class="tog-row"><span class="ctrl-lbl">WPC</span><button class="tog-sm on" onclick="T(this,'wpc')"></button></div>
+      <div class="tog-row"><span class="ctrl-lbl">Raw GMA</span><button class="tog-sm on" onclick="T(this,'raw_gma')"></button></div>
+      <div class="tog-row"><span class="ctrl-lbl">Lens Corr.</span><button class="tog-sm on" onclick="T(this,'lenc')"></button></div>
+    </div>
+
+    <!-- Orientation -->
+    <div class="sec">
+      <div class="sec-hdr">Orientation</div>
+      <div class="tog-row"><span class="ctrl-lbl">H-Mirror</span><button class="tog-sm" onclick="T(this,'hmirror')"></button></div>
+      <div class="tog-row"><span class="ctrl-lbl">V-Flip</span><button class="tog-sm" onclick="T(this,'vflip')"></button></div>
+      <div class="tog-row"><span class="ctrl-lbl">DCW</span><button class="tog-sm on" onclick="T(this,'dcw')"></button></div>
+      <div class="tog-row"><span class="ctrl-lbl">Color Bar</span><button class="tog-sm" onclick="T(this,'colorbar')"></button></div>
+    </div>
+  </div><!-- /sidebar -->
+
+</div><!-- /main -->
+
+<!-- ══════════ MOBILE BOTTOM BAR ══════════ -->
+<div id="bottomBar">
+  <button class="bb-btn" onclick="showGrid();closeMSheet()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+      <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+    </svg>GRID
+  </button>
+  <button class="bb-btn" id="bbRecBtn" onclick="toggleRec()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/>
+    </svg>REC
+  </button>
+  <button class="bb-btn" onclick="doSnap()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+      <circle cx="12" cy="13" r="4"/>
+    </svg>SNAP
+  </button>
+  <button class="bb-btn" id="bbCtrlBtn" onclick="toggleMSheet()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="17" y2="18"/>
+    </svg>CTRL
+  </button>
+  <button class="bb-btn" onclick="toggleFS()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+      <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+    </svg>FULL
+  </button>
+</div>
+
+<!-- ══════════ MOBILE SHEET ══════════ -->
+<div id="mobileSheet">
+  <div class="sheet-handle"></div>
+  <!-- same controls cloned into mobile sheet by JS -->
+  <div id="mobileSheetContent"></div>
+</div>
+
+<!-- ══════════ TOAST ══════════ -->
+<div id="toast"></div>
+
 <script>
+<<<<<<< HEAD
 // ════════════════════════════════════════════════════════════════
 // State
 // ════════════════════════════════════════════════════════════════
@@ -1221,6 +1874,509 @@ document.getElementById('osdToggle').addEventListener('click', function() {
 // Boot
 // ════════════════════════════════════════════════════════════════
 connect();
+=======
+'use strict';
+
+// ════════════ STATE ════════════
+const cameras = {};
+let selectedCamId = null;
+let focusedCamId  = null;
+let osdOn         = true;
+let sidebarOpen   = false;
+let mSheetOpen    = false;
+let recTimerInterval = null;
+
+// ════════════ CAMERA MODEL ════════════
+class Cam {
+  constructor(id) {
+    this.id = id; this.name = `CAM-${id}`;
+    this.connected = false; this.fps = 0; this.kbps = 0;
+    this.frames = 0; this.dropped = 0;
+    this.rssi = 0; this.free_heap_kb = 0; this.uptime_secs = 0;
+    this.esp_fps = 0; this.resolution = 'VGA (480p)'; this.ip = '';
+    this.recording = false; this.rec_frames = 0; this.rec_duration = 0;
+    // render
+    this.canvas=null; this.ctx=null;
+    this.pending=null; this.rendering=false;
+    this.localFps=0; this._fpsN=0; this._fpsT=performance.now();
+  }
+  upd(d){
+    for(const k of Object.keys(d)) if(k in this) this[k]=d[k];
+    this.name = d.name ?? this.name;
+    this.ip   = d.ip   ?? this.ip;
+  }
+}
+
+// ════════════ WebSocket ════════════
+let ws=null, reconn=null;
+function connect(){
+  const p = location.protocol==='https:'?'wss:':'ws:';
+  ws = new WebSocket(`${p}//${location.host}/ws`);
+  ws.binaryType='arraybuffer';
+  ws.onopen=()=>{ clearTimeout(reconn); };
+  ws.onmessage=(e)=>{ typeof e.data==='string'?handleText(JSON.parse(e.data)):handleBinary(e.data); };
+  ws.onclose=()=>{ reconn=setTimeout(connect,1200); };
+  ws.onerror=()=>ws.close();
+}
+function wsSend(obj){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(obj)); }
+function ctrlSend(param,val){ if(selectedCamId===null)return; wsSend({action:'control',cam_id:selectedCamId,param,value:val}); }
+
+// ════════════ Message handlers ════════════
+function handleText(msg){
+  if(msg.type==='cam_list'){
+    Object.values(msg.cameras).forEach(d=>ensureCam(+d.cam_id,d));
+    recount();
+  } else if(msg.type==='cam_joined'||msg.type==='cam_status'){
+    ensureCam(+msg.cam_id, msg.data); recount();
+  } else if(msg.type==='cam_removed'){
+    removeCam(+msg.cam_id); recount();
+  } else if(msg.type==='stats'){
+    Object.entries(msg.cameras).forEach(([cid,d])=>{
+      const cam=cameras[+cid]; if(cam){ cam.upd(d); refreshRecUI(cam); }
+    });
+    refreshCamInfo(); recount();
+  }
+}
+function handleBinary(buf){
+  const a=new Uint8Array(buf); if(a.length<3)return;
+  const cam=cameras[a[0]]; if(!cam)return;
+  cam._fpsN++;
+  const now=performance.now();
+  if(now-cam._fpsT>=1000){
+    cam.localFps=Math.round(cam._fpsN*1000/(now-cam._fpsT));
+    cam._fpsN=0; cam._fpsT=now;
+  }
+  renderToCanvas(cam, buf.slice(1));
+}
+
+// ════════════ Camera DOM ════════════
+function ensureCam(id,data){
+  let cam=cameras[id],isNew=!cam;
+  if(!cam){ cam=new Cam(id); cameras[id]=cam; buildCell(cam); buildTab(cam); addSelOpt(cam); }
+  cam.upd(data); updateTabState(cam);
+  if(selectedCamId===null){ selectedCamId=id; syncSel(); }
+  reflow();
+}
+function removeCam(id){
+  const cam=cameras[id]; if(!cam)return;
+  document.getElementById(`cell-${id}`)?.remove();
+  document.getElementById(`tab-${id}`)?.remove();
+  document.getElementById(`opt-${id}`)?.remove();
+  delete cameras[id];
+  if(focusedCamId===id) showGrid();
+  if(selectedCamId===id){ selectedCamId=Object.keys(cameras)[0]??null; syncSel(); }
+  reflow();
+}
+function buildCell(cam){
+  const cell=document.createElement('div');
+  cell.className='cam-cell'; cell.id=`cell-${cam.id}`;
+  const cv=document.createElement('canvas');
+  cv.width=640; cv.height=480; cv.id=`cv-${cam.id}`;
+  cell.appendChild(cv);
+  const btns=document.createElement('div'); btns.className='cell-btn-row';
+  const expand=document.createElement('button'); expand.className='cell-action';
+  expand.textContent='⤢ Focus'; expand.onclick=(e)=>{ e.stopPropagation(); focusCam(cam.id); };
+  const snap=document.createElement('button'); snap.className='cell-action';
+  snap.textContent='📷'; snap.title='Snapshot';
+  snap.onclick=(e)=>{ e.stopPropagation(); doSnapFor(cam.id); };
+  const rec=document.createElement('button'); rec.className='cell-action rec-act';
+  rec.id=`cellRec-${cam.id}`; rec.textContent='⏺ REC';
+  rec.onclick=(e)=>{ e.stopPropagation(); toggleRecFor(cam.id); };
+  btns.append(expand,snap,rec); cell.appendChild(btns);
+  cell.onclick=()=>focusCam(cam.id);
+  // no-signal placeholder
+  const ns=document.createElement('div'); ns.className='nosig'; ns.id=`ns-${cam.id}`;
+  ns.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="2" y1="3" x2="22" y2="17" stroke-width="2"/></svg><p>${cam.name}</p>`;
+  cell.appendChild(ns);
+  document.getElementById('gridView').appendChild(cell);
+  cam.canvas=cv; cam.ctx=cv.getContext('2d');
+}
+function buildTab(cam){
+  const t=document.createElement('button');
+  t.className='cam-tab off'; t.id=`tab-${cam.id}`;
+  t.innerHTML=`<div class="td"></div><span>${cam.name}</span>`;
+  t.onclick=()=>focusCam(cam.id);
+  document.getElementById('camTabs').appendChild(t);
+}
+function addSelOpt(cam){
+  const sel=document.getElementById('ctrlSel');
+  const opt=document.createElement('option');
+  opt.value=cam.id; opt.id=`opt-${cam.id}`; opt.textContent=cam.name;
+  sel.appendChild(opt); sel.value=cam.id;
+}
+function updateTabState(cam){
+  const t=document.getElementById(`tab-${cam.id}`); if(!t)return;
+  t.classList.toggle('live',cam.connected);
+  t.classList.toggle('off',!cam.connected);
+  t.querySelector('span').textContent=cam.name;
+}
+function reflow(){
+  const n=Object.keys(cameras).length;
+  const gv=document.getElementById('gridView'); gv.className='';
+  if(n===2) gv.classList.add('c2');
+  else if(n===3) gv.classList.add('c3');
+  else if(n===4) gv.classList.add('c4');
+  else if(n>=5) gv.classList.add('c5');
+}
+function recount(){
+  const live=Object.values(cameras).filter(c=>c.connected).length;
+  const badge=document.getElementById('liveBadge');
+  badge.textContent=`${live} LIVE`;
+  badge.classList.toggle('on',live>0);
+}
+
+// ════════════ Frame rendering ════════════
+function renderToCanvas(cam, jpegBuf){
+  const blob=new Blob([jpegBuf],{type:'image/jpeg'});
+  const url=URL.createObjectURL(blob);
+  if(cam.rendering){ if(cam.pending)URL.revokeObjectURL(cam.pending); cam.pending=url; return; }
+  _render(cam,url);
+}
+function _render(cam,url){
+  cam.rendering=true;
+  const img=new Image();
+  img.onload=()=>{
+    if(cam.canvas.width!==img.naturalWidth||cam.canvas.height!==img.naturalHeight){
+      cam.canvas.width=img.naturalWidth; cam.canvas.height=img.naturalHeight;
+    }
+    cam.ctx.drawImage(img,0,0);
+    if(osdOn) drawOSD(cam.ctx,cam);
+    // hide no-signal
+    const ns=document.getElementById(`ns-${cam.id}`); if(ns) ns.style.display='none';
+    // focus canvas
+    if(focusedCamId===cam.id){
+      const fc=document.getElementById('focusCanvas');
+      if(fc.width!==img.naturalWidth||fc.height!==img.naturalHeight){ fc.width=img.naturalWidth; fc.height=img.naturalHeight; }
+      fc.getContext('2d').drawImage(img,0,0);
+      if(osdOn) drawOSD(fc.getContext('2d'),cam);
+    }
+    URL.revokeObjectURL(url);
+    cam.rendering=false;
+    if(cam.pending){ const n=cam.pending; cam.pending=null; _render(cam,n); }
+  };
+  img.onerror=()=>{ URL.revokeObjectURL(url); cam.rendering=false; if(cam.pending){const n=cam.pending;cam.pending=null;_render(cam,n);} };
+  img.src=url;
+}
+
+// ════════════ OSD ════════════
+function drawOSD(ctx,cam){
+  const W=ctx.canvas.width, H=ctx.canvas.height;
+  const sc=Math.min(W/640,H/480,1.5);
+  const fs=n=>Math.max(9,Math.round(n*sc));
+  ctx.save(); ctx.textBaseline='alphabetic';
+  const pad=8;
+
+  // --- WiFi bars + RSSI ---
+  drawBars(ctx,pad,pad,cam.rssi,sc);
+  ctx.font=`${fs(10)}px monospace`; ctx.fillStyle=rssiCol(cam.rssi);
+  _lbl(ctx,pad,pad+fs(26),`${cam.rssi}dBm`,'rgba(0,0,0,.55)');
+
+  // --- Cam name ---
+  ctx.font=`bold ${fs(13)}px monospace`;
+  const nm=cam.name; const nmw=ctx.measureText(nm).width;
+  ctx.fillStyle='rgba(0,0,0,.65)';
+  rrect(ctx,pad-3,pad+fs(30),nmw+12,fs(18),3); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.fillText(nm,pad+3,pad+fs(42));
+  if(cam.ip){ ctx.font=`${fs(9)}px monospace`; ctx.fillStyle='rgba(255,255,255,.3)'; ctx.fillText(cam.ip,pad,pad+fs(55)); }
+
+  // --- REC badge ---
+  if(cam.recording){
+    ctx.font=`bold ${fs(11)}px monospace`;
+    const rl=`⏺ REC ${fmtDur(cam.rec_duration||0)}`;
+    const rw=ctx.measureText(rl).width;
+    ctx.fillStyle='rgba(200,0,30,.8)'; rrect(ctx,W/2-rw/2-8,pad,rw+16,fs(20),3); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.fillText(rl,W/2,pad+fs(14)); ctx.textAlign='left';
+  }
+
+  // --- FPS (top-right) ---
+  const fps=cam.localFps||cam.esp_fps||0;
+  const fpsCol=fps>=25?'#00e57a':fps>=14?'#ffc107':'#ff3356';
+  ctx.font=`bold ${fs(34)}px monospace`;
+  const fw=ctx.measureText(String(fps)).width;
+  const fx=W-fw-pad-fs(28);
+  ctx.fillStyle='rgba(0,0,0,.65)'; rrect(ctx,fx-6,pad,fw+fs(38),fs(40),4); ctx.fill();
+  ctx.fillStyle=fpsCol; ctx.fillText(String(fps),fx,pad+fs(34));
+  ctx.font=`bold ${fs(9)}px monospace`; ctx.fillStyle='rgba(255,255,255,.45)';
+  ctx.fillText('FPS',fx+fw+4,pad+fs(14));
+  ctx.font=`${fs(9)}px monospace`; ctx.fillStyle=fpsCol;
+  ctx.fillText(`ESP:${cam.esp_fps||0}`,fx+fw+4,pad+fs(26));
+
+  // --- Resolution ---
+  ctx.font=`${fs(10)}px monospace`; ctx.fillStyle='rgba(100,180,255,.9)';
+  const rs=cam.resolution||'';
+  _lbl(ctx,W-ctx.measureText(rs).width-pad-4,pad+fs(50),rs,'rgba(0,0,0,.45)');
+
+  // --- Bottom-left: kbps + heap ---
+  const by=H-pad;
+  ctx.fillStyle='rgba(0,0,0,.55)'; rrect(ctx,pad-3,by-fs(38),fs(120),fs(42),3); ctx.fill();
+  ctx.font=`${fs(10)}px monospace`; ctx.fillStyle='#88aaff';
+  ctx.fillText(`${cam.kbps||0} Kbps`,pad+3,by-fs(22));
+  ctx.font=`${fs(9)}px monospace`; ctx.fillStyle=heapCol(cam.free_heap_kb);
+  ctx.fillText(`Heap:${cam.free_heap_kb}KB`,pad+3,by-fs(8));
+
+  // --- Bottom-center: uptime ---
+  const ut=fmtUp(cam.uptime_secs);
+  ctx.font=`${fs(10)}px monospace`;
+  const uw=ctx.measureText(ut).width;
+  _lbl(ctx,(W-uw)/2-3,by-fs(8),ut,'rgba(0,0,0,.5)','rgba(255,255,255,.45)');
+
+  // --- Bottom-right: frames + dropped ---
+  const dr=`DROP:${cam.dropped}`, fr=`#${cam.frames}`;
+  ctx.font=`${fs(10)}px monospace`;
+  const bw2=Math.max(ctx.measureText(dr).width,ctx.measureText(fr).width);
+  const bx=W-bw2-pad-6;
+  ctx.fillStyle='rgba(0,0,0,.55)'; rrect(ctx,bx-3,by-fs(38),bw2+12,fs(42),3); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.45)'; ctx.fillText(fr,bx+bw2-ctx.measureText(fr).width,by-fs(22));
+  ctx.fillStyle=cam.dropped>20?'#ff3356':'rgba(255,255,255,.3)';
+  ctx.fillText(dr,bx+bw2-ctx.measureText(dr).width,by-fs(8));
+
+  // --- Live dot ---
+  ctx.beginPath(); ctx.arc(W/2,pad+fs(48),fs(4),0,Math.PI*2);
+  ctx.fillStyle=cam.connected?'#00e57a':'#ff3356'; ctx.fill();
+
+  ctx.restore();
+}
+function drawBars(ctx,x,y,rssi,sc){
+  const fs=n=>Math.max(2,Math.round(n*sc));
+  const bars=rssi>=-65?4:rssi>=-73?3:rssi>=-82?2:rssi>=-90?1:0;
+  const col=bars>=3?'#00e57a':bars>=2?'#ffc107':'#ff3356';
+  const bw=fs(5),gap=fs(2),bh0=fs(18);
+  for(let i=0;i<4;i++){
+    const bh=fs(4+i*4); const bx=x+i*(bw+gap); const byy=y+bh0-bh;
+    ctx.fillStyle=i<bars?col:'rgba(255,255,255,.12)';
+    rrect(ctx,bx,byy,bw,bh,1); ctx.fill();
+  }
+}
+function _lbl(ctx,x,y,txt,bg,fg='#fff'){
+  const tw=ctx.measureText(txt).width,fh=parseInt(ctx.font)||12;
+  ctx.fillStyle=bg; rrect(ctx,x-2,y-fh+1,tw+8,fh+3,2); ctx.fill();
+  ctx.fillStyle=fg; ctx.fillText(txt,x+2,y);
+}
+function rrect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath();
+}
+function rssiCol(r){ return r>=-65?'#00e57a':r>=-73?'#ffc107':'#ff3356'; }
+function heapCol(kb){ return kb>80?'#00e57a':kb>40?'#ffc107':'#ff3356'; }
+function fmtUp(s){
+  if(!s)return'00:00:00';
+  return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(v=>String(v).padStart(2,'0')).join(':');
+}
+function fmtDur(s){ return [Math.floor(s/60),Math.floor(s%60)].map(v=>String(v).padStart(2,'0')).join(':'); }
+
+// ════════════ View controls ════════════
+function showGrid(){
+  focusedCamId=null;
+  document.getElementById('gridView').style.display='';
+  document.getElementById('focusView').classList.remove('act');
+  setTabActive('tabAll');
+}
+function focusCam(id){
+  id=+id; focusedCamId=id; selectedCamId=id;
+  document.getElementById('gridView').style.display='none';
+  document.getElementById('focusView').classList.add('act');
+  setTabActive(`tab-${id}`); syncSel(); refreshCamInfo();
+}
+function setTabActive(id){
+  document.querySelectorAll('.cam-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id)?.classList.add('active');
+}
+function toggleOSD(){
+  osdOn=!osdOn;
+  document.getElementById('osdBtn').classList.toggle('on',osdOn);
+}
+function toggleSidebar(){
+  const sb=document.getElementById('sidebar');
+  sidebarOpen=!sidebarOpen;
+  sb.classList.toggle('hidden',!sidebarOpen);
+  document.getElementById('sbToggle').classList.toggle('on',sidebarOpen);
+}
+function toggleFS(){
+  if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen().catch(()=>{});
+}
+function toggleMSheet(){
+  mSheetOpen=!mSheetOpen;
+  document.getElementById('mobileSheet').classList.toggle('open',mSheetOpen);
+  document.getElementById('bbCtrlBtn').classList.toggle('on',mSheetOpen);
+}
+function closeMSheet(){
+  mSheetOpen=false;
+  document.getElementById('mobileSheet').classList.remove('open');
+  document.getElementById('bbCtrlBtn').classList.remove('on');
+}
+
+// ════════════ Controls ════════════
+function C(p,v){ ctrlSend(p,v); }
+function T(btn,p){ const on=btn.classList.toggle('on'); ctrlSend(p,on?1:0); }
+function U(inp){ inp.parentElement.querySelector('.rval').textContent=inp.value; }
+function onCtrlCamChange(id){ selectedCamId=id; refreshCamInfo(); }
+function syncSel(){
+  const s=document.getElementById('ctrlSel');
+  if(selectedCamId!==null) s.value=selectedCamId;
+}
+function setRes(r){
+  document.querySelectorAll('.res-btn').forEach(b=>b.classList.toggle('active',+b.dataset.r===r));
+  C('resolution',r);
+}
+function toggleFlash(){
+  const b=document.getElementById('flashTog');
+  const sl=document.getElementById('flashSlider');
+  const on=b.classList.toggle('on');
+  if(on){ const v=+sl.value||128; sl.value=v; setFlash(v); }
+  else{ setFlash(0); }
+}
+function setFlash(v){
+  document.getElementById('flashVal').textContent=v;
+  document.getElementById('flashTog').classList.toggle('on',v>0);
+  C('flash',v);
+}
+
+// ════════════ Camera info panel ════════════
+function refreshCamInfo(){
+  const cam=cameras[selectedCamId];
+  const box=document.getElementById('camInfoBox');
+  const badge=document.getElementById('camBadge');
+  if(!cam){ box.innerHTML=''; badge.textContent='OFFLINE'; badge.classList.remove('live'); return; }
+  badge.textContent=cam.connected?'LIVE':'OFFLINE';
+  badge.classList.toggle('live',cam.connected);
+  // update sel option text
+  const opt=document.getElementById(`opt-${cam.id}`);
+  if(opt) opt.textContent=cam.name;
+  // chips
+  const rssiCls=cam.rssi>=-65?'g':cam.rssi>=-80?'y':'r';
+  const heapCls=cam.free_heap_kb>80?'g':cam.free_heap_kb>40?'y':'r';
+  box.innerHTML=
+    `<span class="chip ${rssiCls}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1.42 9A16 16 0 0 1 22.58 9"/><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>${cam.rssi}dBm</span>`+
+    `<span class="chip ${heapCls}">Heap:${cam.free_heap_kb}KB</span>`+
+    `<span class="chip">⏱${fmtUp(cam.uptime_secs)}</span>`+
+    `<span class="chip">${cam.resolution}</span>`+
+    `<span class="chip">${cam.ip||'—'}</span>`;
+  refreshRecUI(cam);
+}
+function refreshRecUI(cam){
+  if(!cam||cam.id!==selectedCamId)return;
+  const info=document.getElementById('recInfo');
+  const startBtn=document.getElementById('recStartBtn');
+  const stopBtn=document.getElementById('recStopBtn');
+  const recBtn=document.getElementById('recBtn');
+  const bbRec=document.getElementById('bbRecBtn');
+  if(cam.recording){
+    info.className='rec-info active';
+    info.innerHTML=`⏺ Recording — <b>${cam.rec_frames} frames</b> / <b>${fmtDur(cam.rec_duration)}</b>`;
+    startBtn.disabled=true; stopBtn.disabled=false;
+    recBtn.classList.add('rec-on'); bbRec?.classList.add('rec-on');
+  } else {
+    info.className='rec-info';
+    info.textContent='Not recording';
+    startBtn.disabled=false; stopBtn.disabled=true;
+    recBtn.classList.remove('rec-on'); bbRec?.classList.remove('rec-on');
+  }
+  // cell REC button
+  const cellRec=document.getElementById(`cellRec-${cam.id}`);
+  if(cellRec){ cellRec.textContent=cam.recording?'⏹ STOP':'⏺ REC'; cellRec.classList.toggle('rec-act',!cam.recording); }
+}
+
+// ════════════ Record ════════════
+function toggleRec(){
+  if(selectedCamId===null){ toast('Select a camera first','err'); return; }
+  const cam=cameras[selectedCamId];
+  if(!cam) return;
+  if(cam.recording) recStop(); else recStart();
+}
+async function recStart(){
+  if(selectedCamId===null){ toast('No camera selected','err'); return; }
+  try{
+    const r=await fetch(`/api/record/start?cam_id=${selectedCamId}`,{method:'POST'});
+    const d=await r.json();
+    if(d.error){ toast(d.error,'err'); return; }
+    const cam=cameras[selectedCamId]; if(cam){ cam.recording=true; refreshRecUI(cam); }
+    toast('Recording started','ok');
+  } catch(e){ toast('Server error','err'); }
+}
+async function recStop(){
+  if(selectedCamId===null){ toast('No camera selected','err'); return; }
+  const cam=cameras[selectedCamId];
+  if(!cam||!cam.recording){ toast('Not recording','err'); return; }
+  toast('Saving video…');
+  try{
+    const r=await fetch(`/api/record/stop?cam_id=${selectedCamId}`,{method:'POST'});
+    if(!r.ok){ const d=await r.json(); toast(d.error||'Error','err'); return; }
+    const blob=await r.blob();
+    const cd=r.headers.get('Content-Disposition')||'';
+    const fn=cd.match(/filename="([^"]+)"/)?.[1]||`recording_${selectedCamId}.avi`;
+    _download(blob,fn);
+    if(cam){ cam.recording=false; refreshRecUI(cam); }
+    toast(`Saved: ${fn}`,'ok');
+  } catch(e){ toast('Download failed','err'); }
+}
+async function toggleRecFor(camId){
+  const cam=cameras[camId]; if(!cam)return;
+  const prevSel=selectedCamId; selectedCamId=camId;
+  if(cam.recording) await recStop(); else await recStart();
+  selectedCamId=prevSel;
+}
+
+// ════════════ Snapshot ════════════
+async function doSnap(){ await doSnapFor(selectedCamId); }
+async function doSnapFor(camId){
+  if(camId===null){ toast('No camera','err'); return; }
+  try{
+    const r=await fetch(`/api/snapshot?cam_id=${camId}`);
+    if(!r.ok){ toast('No frame available','err'); return; }
+    const blob=await r.blob();
+    const cd=r.headers.get('Content-Disposition')||'';
+    const fn=cd.match(/filename="([^"]+)"/)?.[1]||`snapshot_${camId}.jpg`;
+    _download(blob,fn);
+    toast(`Saved: ${fn}`,'ok');
+  } catch(e){ toast('Snapshot failed','err'); }
+}
+
+// ════════════ Download helper ════════════
+function _download(blob,filename){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename; a.style.display='none';
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1000);
+}
+
+// ════════════ Toast ════════════
+let toastTimer=null;
+function toast(msg,type=''){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className=''; t.classList.add('show');
+  if(type) t.classList.add(type);
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),2800);
+}
+
+// ════════════ Mobile sheet content ════════════
+function buildMobileSheet(){
+  // Mirror the sidebar HTML into the mobile sheet for phones
+  const sidebar=document.getElementById('sidebar');
+  const sheet=document.getElementById('mobileSheetContent');
+  sheet.innerHTML=sidebar.innerHTML;
+  // Reconnect all onclick handlers (they reference global functions so they still work)
+}
+
+// ════════════ Init ════════════
+window.addEventListener('DOMContentLoaded',()=>{
+  connect();
+  buildMobileSheet();
+  // Keyboard shortcuts
+  document.addEventListener('keydown',(e)=>{
+    if(e.key==='Escape'&&focusedCamId!==null) showGrid();
+    if(e.key==='r'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); toggleRec(); }
+    if(e.key==='s'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); doSnap(); }
+    if(e.key==='f') toggleFS();
+    if(e.key==='o') toggleOSD();
+  });
+});
+>>>>>>> 04800748ba083d03cb114330e14b25872fe506cc
 </script>
 </body>
 </html>
