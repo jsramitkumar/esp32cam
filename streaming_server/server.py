@@ -20,6 +20,9 @@ import time
 import json
 import logging
 import os
+import io
+import zipfile
+import datetime
 from collections import defaultdict
 
 from aiohttp import web
@@ -145,6 +148,12 @@ class CameraSession:
         self.last_seen = time.monotonic()
         self.joined_at = time.monotonic()
 
+        # Recording
+        self.recording         = False
+        self.record_frames:    list[bytes] = []
+        self.record_start_ts:  float = 0.0
+        self.record_frame_ts:  list[float] = []  # monotonic timestamps per frame
+
     def on_bytes(self, n: int):
         self.bytes_received += n
         self._kbps_bytes += n
@@ -183,6 +192,9 @@ class CameraSession:
             "uptime_secs":  self.uptime_secs,
             "esp_fps":      self.esp_fps,
             "resolution":   self.resolution,
+            "recording":    self.recording,
+            "rec_frames":   len(self.record_frames),
+            "rec_duration": round(time.monotonic() - self.record_start_ts, 1) if self.recording else 0,
         }
 
 
@@ -277,6 +289,9 @@ class MultiCamServer:
                 cam.latest_frame_id = frame_id
                 cam.on_frame()
                 self.any_new_frame.set()
+                if cam.recording:
+                    cam.record_frames.append(frame_data)
+                    cam.record_frame_ts.append(time.monotonic())
 
             cam.frame_chunks.pop(frame_id, None)
             cam.frame_total_chunks.pop(frame_id, None)
@@ -442,6 +457,199 @@ async def stats_handler(request: web.Request) -> web.Response:
     })
 
 
+async def record_start_handler(request: web.Request) -> web.Response:
+    """POST /api/record/start?cam_id=0  — begin recording for camera."""
+    server: MultiCamServer = request.app["server"]
+    cam_id = int(request.rel_url.query.get("cam_id", 0))
+    cam = server.cameras_by_id.get(cam_id)
+    if not cam:
+        return web.json_response({"error": "camera not found"}, status=404)
+    if cam.recording:
+        return web.json_response({"error": "already recording"})
+    cam.record_frames   = []
+    cam.record_frame_ts = []
+    cam.record_start_ts = time.monotonic()
+    cam.recording       = True
+    log.info(f"{cam.name}: recording started")
+    return web.json_response({"ok": True, "cam_id": cam_id})
+
+
+async def record_stop_handler(request: web.Request) -> web.Response:
+    """POST /api/record/stop?cam_id=0  — stop and return MJPEG as .avi inside a zip."""
+    server: MultiCamServer = request.app["server"]
+    cam_id = int(request.rel_url.query.get("cam_id", 0))
+    cam = server.cameras_by_id.get(cam_id)
+    if not cam:
+        return web.json_response({"error": "camera not found"}, status=404)
+    if not cam.recording:
+        return web.json_response({"error": "not recording"})
+
+    cam.recording = False
+    frames    = cam.record_frames[:]
+    frame_ts  = cam.record_frame_ts[:]
+    cam.record_frames   = []
+    cam.record_frame_ts = []
+    n = len(frames)
+    log.info(f"{cam.name}: recording stopped — {n} frames")
+
+    if n == 0:
+        return web.json_response({"error": "no frames recorded"})
+
+    # Build MJPEG AVI in memory
+    avi_bytes = _build_avi(frames, frame_ts)
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{cam.name}_{ts}.avi"
+
+    return web.Response(
+        body=avi_bytes,
+        content_type="video/x-msvideo",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+async def snapshot_handler(request: web.Request) -> web.Response:
+    """GET /api/snapshot?cam_id=0  — download latest JPEG frame."""
+    server: MultiCamServer = request.app["server"]
+    cam_id = int(request.rel_url.query.get("cam_id", 0))
+    cam = server.cameras_by_id.get(cam_id)
+    if not cam or cam.latest_frame is None:
+        return web.json_response({"error": "no frame available"}, status=404)
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{cam.name}_{ts}.jpg"
+    return web.Response(
+        body=cam.latest_frame,
+        content_type="image/jpeg",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ─── MJPEG AVI builder ────────────────────────────────────────────────────────
+# Produces a minimal OpenDML / MJPEG AVI-1.0 file playable by VLC, Windows
+# Media Player, ffmpeg etc. No external dependency needed.
+
+def _le16(v: int) -> bytes: return struct.pack("<H", v & 0xFFFF)
+def _le32(v: int) -> bytes: return struct.pack("<I", v & 0xFFFFFFFF)
+def _riff(fourcc: str, data: bytes) -> bytes:
+    return fourcc.encode() + _le32(len(data)) + data
+
+def _list_chunk(fourcc: str, chunks: list[bytes]) -> bytes:
+    inner = fourcc.encode() + b"".join(chunks)
+    return b"LIST" + _le32(len(inner)) + inner
+
+def _jpeg_dimensions(data: bytes) -> tuple[int, int]:
+    """Extract width/height from a JPEG by scanning SOF markers."""
+    i = 0
+    while i < len(data) - 1:
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if marker in (0xC0, 0xC2):  # SOF0, SOF2
+            if i + 9 <= len(data):
+                h = (data[i+5] << 8) | data[i+6]
+                w = (data[i+7] << 8) | data[i+8]
+                return w, h
+        if marker in (0xD8, 0xD9, 0x01) or (0xD0 <= marker <= 0xD7):
+            i += 2
+            continue
+        if i + 4 > len(data):
+            break
+        seg_len = (data[i+2] << 8) | data[i+3]
+        i += 2 + seg_len
+    return 640, 480  # fallback
+
+def _build_avi(frames: list[bytes], timestamps: list[float]) -> bytes:
+    n      = len(frames)
+    # Compute average FPS from timestamps
+    if n >= 2:
+        total_t = timestamps[-1] - timestamps[0]
+        fps_num = max(1, round((n - 1) / max(0.001, total_t)))
+    else:
+        fps_num = 25
+    fps_den = 1
+
+    # Assume all frames are same resolution (read first JPEG SOF0 if possible)
+    width, height = _jpeg_dimensions(frames[0])
+
+    # Build movi chunk with index
+    movi_chunks: list[bytes] = []
+    idx_entries  = bytearray()
+    movi_offset  = 4  # after 'movi'
+    for jpeg in frames:
+        tag   = b"00dc"  # stream 0, compressed video
+        padded = jpeg if len(jpeg) % 2 == 0 else jpeg + b"\x00"
+        chunk = tag + _le32(len(jpeg)) + padded
+        idx_entries += tag
+        idx_entries += _le32(0x10)           # AVIIF_KEYFRAME
+        idx_entries += _le32(movi_offset)
+        idx_entries += _le32(len(jpeg))
+        movi_offset += 8 + len(padded)
+        movi_chunks.append(chunk)
+
+    movi_data  = b"movi" + b"".join(movi_chunks)
+    idx1_data  = b"idx1" + _le32(len(idx_entries)) + bytes(idx_entries)
+    max_bytes  = max(len(f) for f in frames)
+    avg_bytes  = sum(len(f) for f in frames) // n
+
+    # avih — main AVI header
+    avih = (
+        _le32(1_000_000 // fps_num) +  # microseconds per frame
+        _le32(avg_bytes * fps_num) +    # max bytes per second
+        _le32(0) +                      # padding
+        _le32(0x910) +                  # flags: AVIF_HASINDEX | AVIF_ISINTERLEAVED | AVIF_TRUSTCKTYPE
+        _le32(n) +                      # total frames
+        _le32(0) +                      # initial frames
+        _le32(1) +                      # streams
+        _le32(max_bytes) +              # suggested buffer size
+        _le32(width) +
+        _le32(height) +
+        _le32(0) * 4                    # reserved
+    )
+
+    # strh — stream header
+    strh = (
+        b"vids" +                        # fccType
+        b"MJPG" +                        # fccHandler
+        _le32(0) +                       # flags
+        _le16(0) +                       # priority
+        _le16(0) +                       # language
+        _le32(0) +                       # initial frames
+        _le32(fps_den) +                 # scale
+        _le32(fps_num) +                 # rate
+        _le32(0) +                       # start
+        _le32(n) +                       # length
+        _le32(max_bytes) +               # suggested buffer
+        _le32(10000) +                   # quality (-1 = default)
+        _le32(0) +                       # sample size
+        _le16(0) + _le16(0) + _le16(width) + _le16(height)  # rcFrame
+    )
+
+    # strf — BITMAPINFOHEADER
+    strf = (
+        _le32(40) +          # biSize
+        _le32(width) +
+        _le32(height) +
+        _le16(1) +           # planes
+        _le16(24) +          # bitCount
+        b"MJPG" +
+        _le32(width * height * 3) +
+        _le32(0) + _le32(0) + _le32(0) + _le32(0)
+    )
+
+    strl = _list_chunk("strl", [
+        _riff("strh", strh),
+        _riff("strf", strf),
+    ])
+
+    hdrl = _list_chunk("hdrl", [
+        _riff("avih", avih),
+        strl,
+    ])
+
+    riff_data = hdrl + movi_data + idx1_data
+    return b"RIFF" + _le32(len(riff_data) + 4) + b"AVI " + riff_data
+
+
 # ================== BACKGROUND TASKS =====================
 
 async def frame_broadcaster(app: web.Application):
@@ -553,9 +761,12 @@ async def main():
 
     app = web.Application()
     app["server"] = server
-    app.router.add_get("/",          index_handler)
-    app.router.add_get("/ws",        websocket_handler)
-    app.router.add_get("/api/stats", stats_handler)
+    app.router.add_get("/",                  index_handler)
+    app.router.add_get("/ws",                websocket_handler)
+    app.router.add_get("/api/stats",         stats_handler)
+    app.router.add_post("/api/record/start",  record_start_handler)
+    app.router.add_post("/api/record/stop",   record_stop_handler)
+    app.router.add_get("/api/snapshot",       snapshot_handler)
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)
 
