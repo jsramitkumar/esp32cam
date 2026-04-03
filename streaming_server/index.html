@@ -2,1010 +2,1224 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ESP32-CAM FPV Stream</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESP32-CAM NVR</title>
 <style>
-  :root {
-    --bg: #0a0a0f;
-    --panel: #12131a;
-    --border: #1e2030;
-    --accent: #00d4ff;
-    --accent2: #00ff88;
-    --danger: #ff4466;
-    --text: #c8ccd4;
-    --text-dim: #6b7089;
-    --text-bright: #e8ecf4;
+/* ─── Reset & base ─────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#0a0c0f;color:#d1d5db}
+button{cursor:pointer;border:none;background:none;font:inherit;color:inherit}
+input[type=range]{cursor:pointer}
+select{cursor:pointer}
+
+/* ─── CSS variables ────────────────────────────────────────────── */
+:root{
+  --bg0:#0a0c0f; --bg1:#111318; --bg2:#181c23; --bg3:#1f2430;
+  --border:#282e3a;
+  --accent:#0ea5e9; --accent2:#3b82f6;
+  --live:#22c55e;   --warn:#f59e0b; --danger:#ef4444;
+  --text1:#f0f4ff;  --text2:#9ca3af; --text3:#4b5563;
+  --sidebar:260px;  --topbar:48px;
+}
+
+/* ─── Layout skeleton ──────────────────────────────────────────── */
+#app{display:flex;flex-direction:column;height:100vh}
+
+/* Topbar */
+#topbar{
+  height:var(--topbar);flex-shrink:0;
+  display:flex;align-items:center;gap:12px;
+  padding:0 16px;background:var(--bg1);
+  border-bottom:1px solid var(--border);
+  z-index:20;
+}
+#topbar .logo{
+  display:flex;align-items:center;gap:8px;
+  font-size:14px;font-weight:700;letter-spacing:.5px;color:var(--text1);
+  white-space:nowrap;
+}
+#topbar .logo svg{color:var(--accent)}
+#liveBadge{
+  padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;
+  background:var(--bg3);color:var(--text3);letter-spacing:.5px;
+}
+#liveBadge.on{background:#052e16;color:var(--live)}
+.spacer{flex:1}
+#topbar select{
+  background:var(--bg3);border:1px solid var(--border);color:var(--text1);
+  padding:4px 8px;border-radius:6px;font-size:12px;max-width:160px;
+}
+.topbtn{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:5px 11px;border-radius:6px;font-size:12px;font-weight:600;
+  background:var(--bg3);border:1px solid var(--border);color:var(--text2);
+  transition:background .15s,color .15s;line-height:1;
+}
+.topbtn:hover{background:var(--bg2);color:var(--text1)}
+.topbtn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* Body row */
+#body{display:flex;flex:1;overflow:hidden}
+
+/* ─── Left sidebar (camera list + controls) ────────────────────── */
+#sidebar{
+  width:var(--sidebar);flex-shrink:0;
+  display:flex;flex-direction:column;
+  background:var(--bg1);border-right:1px solid var(--border);
+  overflow:hidden;
+}
+#camList{flex-shrink:0;overflow-y:auto;max-height:260px}
+.cam-card{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;border-bottom:1px solid var(--border);
+  cursor:pointer;transition:background .12s;
+}
+.cam-card:hover{background:var(--bg2)}
+.cam-card.selected{background:var(--bg3)}
+.cam-dot{
+  width:8px;height:8px;border-radius:50%;flex-shrink:0;
+  background:var(--text3);
+}
+.cam-dot.live{background:var(--live);box-shadow:0 0 6px var(--live)}
+.cam-info{flex:1;min-width:0}
+.cam-name{font-size:12px;font-weight:600;color:var(--text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cam-sub{font-size:10px;color:var(--text2)}
+.cam-fps{font-size:11px;font-weight:700;color:var(--text2)}
+
+/* Sidebar tabs */
+#sideTabs{
+  display:flex;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.s-tab{
+  flex:1;padding:9px 0;font-size:11px;font-weight:600;
+  color:var(--text2);text-align:center;letter-spacing:.4px;
+  border-bottom:2px solid transparent;transition:color .12s,border-color .12s;
+}
+.s-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* Panel content */
+#sidePanels{flex:1;overflow-y:auto;overflow-x:hidden}
+.side-panel{display:none;padding:12px}
+.side-panel.active{display:block}
+
+/* Control rows */
+.ctrl-section{margin-bottom:12px}
+.ctrl-title{font-size:10px;font-weight:700;color:var(--text3);
+  letter-spacing:.6px;text-transform:uppercase;margin-bottom:6px}
+.ctrl-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.ctrl-row label{font-size:11px;color:var(--text2);width:88px;flex-shrink:0}
+.ctrl-row input[type=range]{flex:1;accent-color:var(--accent)}
+.ctrl-row select,.ctrl-row input[type=number]{
+  flex:1;background:var(--bg3);border:1px solid var(--border);
+  color:var(--text1);padding:3px 6px;border-radius:5px;font-size:11px;
+}
+.ctrl-row .val{font-size:10px;color:var(--text3);width:26px;text-align:right}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.toggle-row label{font-size:11px;color:var(--text2)}
+.tgl{position:relative;display:inline-block;width:36px;height:20px}
+.tgl input{opacity:0;width:0;height:0}
+.tgl-sl{
+  position:absolute;inset:0;border-radius:20px;background:var(--bg3);
+  border:1px solid var(--border);transition:.2s;cursor:pointer;
+}
+.tgl-sl::before{
+  content:'';position:absolute;width:14px;height:14px;border-radius:50%;
+  left:2px;top:2px;background:var(--text3);transition:.2s;
+}
+.tgl input:checked + .tgl-sl{background:var(--accent);border-color:var(--accent)}
+.tgl input:checked + .tgl-sl::before{transform:translateX(16px);background:#fff}
+
+/* Recording panel */
+.rec-bar{
+  display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;
+}
+.rec-bar button{
+  flex:1;min-width:80px;padding:7px 10px;border-radius:6px;font-size:11px;font-weight:600;
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  background:var(--bg3);border:1px solid var(--border);color:var(--text2);
+  transition:background .12s;line-height:1;
+}
+.rec-bar button:hover{background:var(--bg2)}
+.rec-bar .btn-rec{background:#3f0a0a;border-color:#7f1d1d;color:#fca5a5}
+.rec-bar .btn-rec.active{background:#991b1b;border-color:var(--danger);color:#fff;
+  animation:recblink 1.2s ease-in-out infinite}
+.rec-bar .btn-snap{color:var(--text1)}
+@keyframes recblink{0%,100%{opacity:1}50%{opacity:.6}}
+.rec-stat{font-size:11px;color:var(--text2);padding:4px 0}
+
+/* Stream URLs */
+.url-block{background:var(--bg3);border:1px solid var(--border);border-radius:6px;
+  padding:8px 10px;margin-bottom:8px}
+.url-label{font-size:10px;color:var(--text3);font-weight:700;letter-spacing:.5px;margin-bottom:4px}
+.url-row{display:flex;align-items:center;gap:6px}
+.url-row input{
+  flex:1;background:transparent;border:none;color:var(--text2);
+  font-size:10px;font-family:monospace;outline:none;
+}
+.url-copy{
+  padding:2px 7px;border-radius:4px;font-size:10px;
+  background:var(--bg2);border:1px solid var(--border);color:var(--text2);
+}
+.url-copy:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+/* ─── Main view ─────────────────────────────────────────────────── */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg0)}
+
+/* Camera grid */
+#gridView{
+  flex:1;display:grid;overflow:hidden;
+  gap:3px;padding:3px;background:var(--bg0);
+  grid-template-columns:1fr;
+}
+#gridView.c2{grid-template-columns:1fr 1fr}
+#gridView.c3{grid-template-columns:1fr 1fr 1fr}
+#gridView.c4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+#gridView.c5plus{grid-template-columns:repeat(3,1fr)}
+
+/* Camera cell */
+.cam-cell{
+  position:relative;background:#000;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  border:1.5px solid var(--border);border-radius:4px;
+  cursor:pointer;
+}
+.cam-cell canvas{
+  width:100%;height:100%;object-fit:contain;display:block;
+}
+.cam-cell .no-sig{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:8px;
+  background:#050709;color:var(--text3);pointer-events:none;
+}
+.cam-cell .no-sig svg{width:40px;height:40px;opacity:.4}
+.cam-cell .no-sig p{font-size:11px;letter-spacing:.3px}
+.cam-cell .cell-overlay{
+  position:absolute;bottom:0;left:0;right:0;
+  display:flex;gap:4px;padding:5px;
+  background:linear-gradient(transparent,rgba(0,0,0,.7));
+  opacity:0;transition:opacity .15s;pointer-events:none;
+}
+.cam-cell:hover .cell-overlay{opacity:1;pointer-events:auto}
+.cell-btn{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:4px 8px;font-size:10px;font-weight:600;border-radius:4px;line-height:1;
+  background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.15);
+  color:#fff;backdrop-filter:blur(4px);
+}
+.cell-btn:hover{background:var(--accent)}
+
+/* Focus overlay */
+#focusOverlay{
+  display:none;position:absolute;inset:0;background:#000;
+  z-index:10;flex-direction:column;
+}
+#focusOverlay.show{display:flex}
+#focusCanvas{width:100%;height:100%;object-fit:contain}
+#focusClose{
+  position:absolute;top:10px;right:12px;
+  display:inline-flex;align-items:center;gap:6px;
+  padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;line-height:1;
+  background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.2);color:#fff;
+  backdrop-filter:blur(4px);z-index:11;transition:background .15s;
+}
+#focusClose:hover{background:rgba(255,255,255,.12)}
+
+/* Bottom cam tab bar */
+#camTabs{
+  display:flex;gap:4px;padding:4px 6px;
+  background:var(--bg1);border-top:1px solid var(--border);
+  overflow-x:auto;flex-shrink:0;
+}
+.cam-tab{
+  display:flex;align-items:center;gap:5px;
+  padding:4px 10px;border-radius:5px;font-size:11px;font-weight:600;
+  background:var(--bg3);border:1px solid var(--border);color:var(--text2);
+  white-space:nowrap;transition:background .12s;
+}
+.cam-tab:hover{background:var(--bg2)}
+.cam-tab.live .td{background:var(--live);box-shadow:0 0 5px var(--live)}
+.cam-tab.offline .td{background:var(--text3)}
+.td{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+
+/* ─── Mobile  (≤640 px) ─────────────────────────────────────────── */
+@media(max-width:640px){
+  :root{--sidebar:100vw}
+  #sidebar{
+    position:fixed;bottom:0;left:0;right:0;height:55vh;
+    width:100vw;z-index:30;transform:translateY(100%);
+    transition:transform .25s;border-radius:14px 14px 0 0;
+    border-top:1px solid var(--border);
   }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-    overflow-x: hidden;
-    height: 100vh;
+  #sidebar.open{transform:translateY(0)}
+  #focusOverlay{position:fixed}
+  #mobileBar{
+    display:flex!important;
+    position:fixed;bottom:0;left:0;right:0;height:46px;
+    background:var(--bg1);border-top:1px solid var(--border);
+    z-index:25;
   }
+  #main{padding-bottom:46px}
+  #gridView{padding-bottom:0}
+}
+#mobileBar{display:none;align-items:stretch}
+.mbar-btn{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:2px;font-size:9px;font-weight:600;
+  color:var(--text2);letter-spacing:.3px;padding:0 2px;
+}
+.mbar-btn svg{width:18px;height:18px}
+.mbar-btn.active{color:var(--accent)}
 
-  /* ---- TOP BAR ---- */
-  .topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 16px;
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
-    height: 48px;
-    z-index: 100;
-  }
-
-  .topbar .title {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--accent);
-    letter-spacing: 1px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .topbar .title svg { width: 20px; height: 20px; }
-
-  .status-bar {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    font-size: 12px;
-    font-family: 'Consolas', 'Courier New', monospace;
-  }
-
-  .stat {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-
-  .stat-label { color: var(--text-dim); }
-  .stat-value { color: var(--text-bright); font-weight: 600; }
-  .stat-value.fps { color: var(--accent2); font-size: 14px; }
-
-  .dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--danger);
-    transition: background 0.3s;
-  }
-  .dot.connected { background: var(--accent2); animation: pulse 2s infinite; }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-
-  /* ---- LAYOUT ---- */
-  .main {
-    display: flex;
-    height: calc(100vh - 48px);
-  }
-
-  /* ---- VIDEO AREA ---- */
-  .video-container {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #000;
-    position: relative;
-    overflow: hidden;
-  }
-
-  #streamCanvas {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    image-rendering: auto;
-  }
-
-  .video-overlay {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    pointer-events: none;
-  }
-
-  .overlay-badge {
-    background: rgba(0,0,0,0.7);
-    color: var(--danger);
-    font-size: 11px;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 3px;
-    font-family: monospace;
-    letter-spacing: 1px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .overlay-badge .rec-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--danger);
-    animation: pulse 1s infinite;
-  }
-
-  .no-signal {
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-    color: var(--text-dim);
-  }
-
-  .no-signal svg {
-    width: 64px; height: 64px;
-    margin-bottom: 12px;
-    opacity: 0.3;
-  }
-
-  .no-signal p {
-    font-size: 14px;
-    margin-top: 8px;
-  }
-
-  /* ---- SIDEBAR ---- */
-  .sidebar {
-    width: 320px;
-    background: var(--panel);
-    border-left: 1px solid var(--border);
-    overflow-y: auto;
-    overflow-x: hidden;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-  }
-
-  .sidebar::-webkit-scrollbar { width: 5px; }
-  .sidebar::-webkit-scrollbar-track { background: transparent; }
-  .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-
-  .panel {
-    border-bottom: 1px solid var(--border);
-    padding: 12px 14px;
-  }
-
-  .panel-header {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: var(--text-dim);
-    margin-bottom: 10px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .panel-header svg { width: 14px; height: 14px; opacity: 0.6; }
-
-  /* ---- RESOLUTION ---- */
-  .res-buttons {
-    display: flex;
-    gap: 8px;
-  }
-
-  .res-btn {
-    flex: 1;
-    padding: 8px 12px;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text);
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-align: center;
-  }
-
-  .res-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .res-btn.active {
-    background: var(--accent);
-    color: #000;
-    border-color: var(--accent);
-  }
-
-  /* ---- FLASH ---- */
-  .flash-control {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .flash-toggle {
-    width: 44px; height: 24px;
-    border-radius: 12px;
-    background: var(--border);
-    border: none;
-    cursor: pointer;
-    position: relative;
-    transition: background 0.2s;
-    flex-shrink: 0;
-  }
-
-  .flash-toggle::after {
-    content: '';
-    position: absolute;
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    background: var(--text);
-    top: 3px; left: 3px;
-    transition: all 0.2s;
-  }
-
-  .flash-toggle.on { background: var(--accent); }
-  .flash-toggle.on::after { left: 23px; background: #000; }
-
-  .flash-slider-wrap { flex: 1; }
-
-  /* ---- CONTROLS ---- */
-  .control-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-  }
-
-  .control-row:last-child { margin-bottom: 0; }
-
-  .control-label {
-    font-size: 12px;
-    color: var(--text);
-    min-width: 90px;
-  }
-
-  .control-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1;
-    justify-content: flex-end;
-  }
-
-  input[type="range"] {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 120px;
-    height: 4px;
-    border-radius: 2px;
-    background: var(--border);
-    outline: none;
-    cursor: pointer;
-  }
-
-  input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px; height: 14px;
-    border-radius: 50%;
-    background: var(--accent);
-    cursor: pointer;
-    border: 2px solid var(--bg);
-  }
-
-  input[type="range"]::-moz-range-thumb {
-    width: 14px; height: 14px;
-    border-radius: 50%;
-    background: var(--accent);
-    cursor: pointer;
-    border: 2px solid var(--bg);
-  }
-
-  .range-value {
-    font-size: 11px;
-    font-family: monospace;
-    color: var(--text-dim);
-    min-width: 28px;
-    text-align: right;
-  }
-
-  /* ---- TOGGLE SWITCH ---- */
-  .toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-  }
-
-  .toggle-switch {
-    width: 36px; height: 20px;
-    border-radius: 10px;
-    background: var(--border);
-    border: none;
-    cursor: pointer;
-    position: relative;
-    transition: background 0.2s;
-  }
-
-  .toggle-switch::after {
-    content: '';
-    position: absolute;
-    width: 14px; height: 14px;
-    border-radius: 50%;
-    background: var(--text-dim);
-    top: 3px; left: 3px;
-    transition: all 0.2s;
-  }
-
-  .toggle-switch.on { background: var(--accent); }
-  .toggle-switch.on::after { left: 19px; background: #000; }
-
-  /* ---- SELECT ---- */
-  select {
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 12px;
-    cursor: pointer;
-    outline: none;
-  }
-
-  select:focus { border-color: var(--accent); }
-
-  /* ---- FULLSCREEN BUTTON ---- */
-  .fullscreen-btn {
-    position: absolute;
-    bottom: 12px;
-    right: 12px;
-    background: rgba(0,0,0,0.7);
-    border: 1px solid rgba(255,255,255,0.1);
-    color: var(--text);
-    padding: 6px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transition: all 0.2s;
-    z-index: 10;
-  }
-
-  .fullscreen-btn:hover { background: rgba(0,212,255,0.2); border-color: var(--accent); }
-  .fullscreen-btn svg { width: 14px; height: 14px; }
-
-  /* ---- LATENCY BAR ---- */
-  .latency-indicator {
-    height: 3px;
-    background: var(--border);
-    position: relative;
-    overflow: hidden;
-  }
-
-  .latency-bar {
-    height: 100%;
-    background: var(--accent2);
-    transition: width 0.3s, background 0.3s;
-    width: 0%;
-  }
-
-  .latency-bar.warn { background: #ffaa00; }
-  .latency-bar.bad { background: var(--danger); }
-
-  /* Responsive */
-  @media (max-width: 900px) {
-    .main { flex-direction: column; }
-    .sidebar { width: 100%; height: 50%; border-left: none; border-top: 1px solid var(--border); }
-    .video-container { height: 50%; }
-  }
+/* ─── Scrollbar ─────────────────────────────────────────────────── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
 </style>
 </head>
 <body>
+<div id="app">
 
-<!-- TOP BAR -->
-<div class="topbar">
-  <div class="title">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+<!-- ╔══ TOPBAR ══════════════════════════════════════════════════╗ -->
+<div id="topbar">
+  <div class="logo">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
     </svg>
-    ESP32-CAM FPV
+    ESP32-CAM NVR
   </div>
-  <div class="status-bar">
-    <div class="stat">
-      <div class="dot" id="statusDot"></div>
-      <span class="stat-value" id="statusText">Disconnected</span>
-    </div>
-    <div class="stat">
-      <span class="stat-label">FPS</span>
-      <span class="stat-value fps" id="fpsValue">0</span>
-    </div>
-    <div class="stat">
-      <span class="stat-label">Frames</span>
-      <span class="stat-value" id="framesValue">0</span>
-    </div>
-    <div class="stat">
-      <span class="stat-label">Dropped</span>
-      <span class="stat-value" id="droppedValue">0</span>
-    </div>
-    <div class="stat">
-      <span class="stat-label">Data</span>
-      <span class="stat-value" id="dataValue">0 KB</span>
-    </div>
-  </div>
+  <div id="liveBadge">0 LIVE</div>
+  <div class="spacer"></div>
+  <button id="osdToggle" class="topbtn active" title="Toggle OSD overlay">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    OSD
+  </button>
+  <button class="topbtn" id="gridBtn" onclick="showGrid()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    Grid
+  </button>
 </div>
 
-<div class="latency-indicator">
-  <div class="latency-bar" id="latencyBar"></div>
-</div>
+<!-- ╔══ BODY ════════════════════════════════════════════════════╗ -->
+<div id="body">
 
-<!-- MAIN -->
-<div class="main">
-  <!-- VIDEO -->
-  <div class="video-container" id="videoContainer">
-    <canvas id="streamCanvas" width="640" height="480"></canvas>
+  <!-- ── Left sidebar ── -->
+  <div id="sidebar">
+    <div id="camList"><!-- camera cards injected here --></div>
 
-    <div class="video-overlay">
-      <div class="overlay-badge" id="liveBadge" style="display:none;">
-        <div class="rec-dot"></div>
-        LIVE
+    <!-- Sidebar tab bar -->
+    <div id="sideTabs">
+      <div class="s-tab active" onclick="showPanel('ctrl')">CONTROLS</div>
+      <div class="s-tab" onclick="showPanel('rec')">RECORD</div>
+      <div class="s-tab" onclick="showPanel('stream')">STREAM</div>
+    </div>
+
+    <div id="sidePanels">
+
+      <!-- ── Controls panel ── -->
+      <div class="side-panel active" id="panel-ctrl">
+
+        <div class="ctrl-section">
+          <div class="ctrl-title">Camera</div>
+          <div class="ctrl-row">
+            <label>Resolution</label>
+            <select onchange="ctrl('resolution',+this.value)">
+              <option value="0">480p (VGA)</option>
+              <option value="1">720p (HD)</option>
+            </select>
+          </div>
+          <div class="ctrl-row">
+            <label>JPEG Quality</label>
+            <input type="range" min="4" max="63" value="10" step="1"
+              oninput="this.nextElementSibling.textContent=this.value;ctrl('quality',+this.value)">
+            <span class="val">10</span>
+          </div>
+        </div>
+
+        <div class="ctrl-section">
+          <div class="ctrl-title">Image</div>
+          <div class="ctrl-row">
+            <label>Brightness</label>
+            <input type="range" min="-2" max="2" value="0" step="1"
+              oninput="this.nextElementSibling.textContent=this.value;ctrl('brightness',+this.value)">
+            <span class="val">0</span>
+          </div>
+          <div class="ctrl-row">
+            <label>Contrast</label>
+            <input type="range" min="-2" max="2" value="0" step="1"
+              oninput="this.nextElementSibling.textContent=this.value;ctrl('contrast',+this.value)">
+            <span class="val">0</span>
+          </div>
+          <div class="ctrl-row">
+            <label>Saturation</label>
+            <input type="range" min="-2" max="2" value="0" step="1"
+              oninput="this.nextElementSibling.textContent=this.value;ctrl('saturation',+this.value)">
+            <span class="val">0</span>
+          </div>
+          <div class="ctrl-row">
+            <label>Sharpness</label>
+            <input type="range" min="-2" max="2" value="0" step="1"
+              oninput="this.nextElementSibling.textContent=this.value;ctrl('sharpness',+this.value)">
+            <span class="val">0</span>
+          </div>
+          <div class="ctrl-row">
+            <label>Special FX</label>
+            <select onchange="ctrl('special',+this.value)">
+              <option value="0">Normal</option>
+              <option value="1">Negative</option>
+              <option value="2">B&W</option>
+              <option value="3">Reddish</option>
+              <option value="4">Greenish</option>
+              <option value="5">Bluish</option>
+              <option value="6">Retro</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="ctrl-section">
+          <div class="ctrl-title">White Balance</div>
+          <div class="toggle-row">
+            <label>Auto WB</label>
+            <label class="tgl"><input type="checkbox" checked onchange="ctrl('awb',+this.checked)"><span class="tgl-sl"></span></label>
+          </div>
+          <div class="toggle-row">
+            <label>AWB Gain</label>
+            <label class="tgl"><input type="checkbox" checked onchange="ctrl('awb_gain',+this.checked)"><span class="tgl-sl"></span></label>
+          </div>
+          <div class="ctrl-row">
+            <label>WB Mode</label>
+            <select onchange="ctrl('wb_mode',+this.value)">
+              <option value="0">Auto</option>
+              <option value="1">Sunny</option>
+              <option value="2">Cloudy</option>
+              <option value="3">Office</option>
+              <option value="4">Home</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="ctrl-section">
+          <div class="ctrl-title">Exposure</div>
+          <div class="toggle-row">
+            <label>Auto Exposure</label>
+            <label class="tgl"><input type="checkbox" checked onchange="ctrl('aec',+this.checked)"><span class="tgl-sl"></span></label>
+          </div>
+          <div class="toggle-row">
+            <label>AEC DSP</label>
+            <label class="tgl"><input type="checkbox" checked onchange="ctrl('aec2',+this.checked)"><span class="tgl-sl"></span></label>
+          </div>
+          <div class="ctrl-row">
+            <label>AE Level</label>
+            <input type="range" min="-2" max="2" value="0" step="1"
+              oninput="this.nextElementSibling.textContent=this.value;ctrl('ae_level',+this.value)">
+            <span class="val">0</span>
+          </div>
+          <div class="ctrl-row">
+            <label>Exp Value</label>
+            <input type="range" min="0" max="1200" value="400" step="10"
+              oninput="this.nextElementSibling.textContent=this.value;ctrl('aec_value',+this.value)">
+            <span class="val">400</span>
+          </div>
+        </div>
+
+        <div class="ctrl-section">
+          <div class="ctrl-title">Gain</div>
+          <div class="toggle-row">
+            <label>Auto Gain</label>
+            <label class="tgl"><input type="checkbox" checked onchange="ctrl('agc',+this.checked)"><span class="tgl-sl"></span></label>
+          </div>
+          <div class="ctrl-row">
+            <label>AGC Gain</label>
+            <input type="range" min="0" max="30" value="0" step="1"
+              oninput="this.nextElementSibling.textContent=this.value;ctrl('agc_gain',+this.value)">
+            <span class="val">0</span>
+          </div>
+          <div class="ctrl-row">
+            <label>Gain Ceil</label>
+            <select onchange="ctrl('gainceiling',+this.value)">
+              <option value="0">2x</option><option value="1">4x</option>
+              <option value="2">8x</option><option value="3">16x</option>
+              <option value="4">32x</option><option value="5">64x</option>
+              <option value="6">128x</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="ctrl-section">
+          <div class="ctrl-title">Corrections</div>
+          <div class="toggle-row">
+            <label>BPC</label>
+            <label class="tgl"><input type="checkbox" checked onchange="ctrl('bpc',+this.checked)"><span class="tgl-sl"></span></label>
+          </div>
+          <div class="toggle-row">
+            <label>WPC</label>
+            <label class="tgl"><input type="checkbox" checked onchange="ctrl('wpc',+this.checked)"><span class="tgl-sl"></span></label>
+          </div>
+          <div class="toggle-row">
+            <label>Raw Gamma</label>
+            <label class="tgl"><input type="checkbox" checked onchange="ctrl('raw_gma',+this.checked)"><span class="tgl-sl"></span></label>
+          </div>
+          <div class="toggle-row">
+            <label>Lens Correct</label>
+            <label class="tgl"><input type="checkbox" checked onchange="ctrl('lenc',+this.checked)"><span class="tgl-sl"></span></label>
+          </div>
+          <div class="toggle-row">
+            <label>DCW</label>
+            <label class="tgl"><input type="checkbox" checked onchange="ctrl('dcw',+this.checked)"><span class="tgl-sl"></span></label>
+          </div>
+          <div class="toggle-row">
+            <label>H-Mirror</label>
+            <label class="tgl"><input type="checkbox" onchange="ctrl('hmirror',+this.checked)"><span class="tgl-sl"></span></label>
+          </div>
+          <div class="toggle-row">
+            <label>V-Flip</label>
+            <label class="tgl"><input type="checkbox" onchange="ctrl('vflip',+this.checked)"><span class="tgl-sl"></span></label>
+          </div>
+        </div>
+
+        <div class="ctrl-section">
+          <div class="ctrl-title">Flash LED</div>
+          <div class="ctrl-row">
+            <label>Brightness</label>
+            <input type="range" min="0" max="255" value="0" step="5"
+              oninput="this.nextElementSibling.textContent=this.value;ctrl('flash',+this.value)">
+            <span class="val">0</span>
+          </div>
+        </div>
+
+      </div><!-- /panel-ctrl -->
+
+      <!-- ── Record panel ── -->
+      <div class="side-panel" id="panel-rec">
+        <div style="margin-bottom:10px">
+          <div class="ctrl-title" style="margin-bottom:8px">Camera</div>
+          <select id="recCamSel" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text1);padding:5px 8px;border-radius:6px;font-size:12px">
+            <option value="">— select —</option>
+          </select>
+        </div>
+        <div class="rec-bar">
+          <button class="btn-rec" id="btnRec" onclick="toggleRec()">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="9"/></svg>
+            REC
+          </button>
+          <button class="btn-snap topbtn" onclick="doSnap()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Snap
+          </button>
+        </div>
+        <div class="rec-stat" id="recStat">Not recording</div>
       </div>
-    </div>
 
-    <div class="no-signal" id="noSignal">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <rect x="2" y="3" width="20" height="14" rx="2"/>
-        <line x1="8" y1="21" x2="16" y2="21"/>
-        <line x1="12" y1="17" x2="12" y2="21"/>
-        <line x1="2" y1="3" x2="22" y2="17" stroke-width="2"/>
-      </svg>
-      <p>Waiting for ESP32-CAM...</p>
-      <p style="font-size:11px; margin-top:4px; opacity:0.5;">Ensure firmware is running and connected to same network</p>
-    </div>
+      <!-- ── Stream URLs panel ── -->
+      <div class="side-panel" id="panel-stream">
+        <div class="ctrl-title" style="margin-bottom:8px">Camera</div>
+        <select id="streamCamSel" onchange="updateStreamUrls()"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text1);padding:5px 8px;border-radius:6px;font-size:12px;margin-bottom:10px">
+          <option value="">— select —</option>
+        </select>
+        <div class="url-block">
+          <div class="url-label">MJPEG (embeddable &lt;img&gt;)</div>
+          <div class="url-row">
+            <input type="text" id="urlMjpeg" readonly placeholder="select a camera">
+            <button class="url-copy" onclick="copyUrl('urlMjpeg',this)">COPY</button>
+          </div>
+        </div>
+        <div class="url-block">
+          <div class="url-label">SSE EventSource (base64 JPEG)</div>
+          <div class="url-row">
+            <input type="text" id="urlSse" readonly placeholder="select a camera">
+            <button class="url-copy" onclick="copyUrl('urlSse',this)">COPY</button>
+          </div>
+        </div>
+        <div class="url-block" style="margin-top:4px">
+          <div class="url-label" style="color:var(--text2);font-size:9px">
+            SSE usage: <code style="color:var(--accent)">const es = new EventSource(url);<br>
+            es.addEventListener('frame', e => img.src = 'data:image/jpeg;base64,'+e.data);</code>
+          </div>
+        </div>
+      </div>
 
-    <button class="fullscreen-btn" id="fullscreenBtn" title="Toggle fullscreen">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
-        <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
-      </svg>
-      Fullscreen
-    </button>
+    </div><!-- /sidePanels -->
+  </div><!-- /sidebar -->
+
+  <!-- ── Main area ── -->
+  <div id="main" style="position:relative">
+    <div id="gridView"><!-- cells injected --></div>
+    <div id="focusOverlay">
+      <canvas id="focusCanvas"></canvas>
+      <button id="focusClose" onclick="showGrid()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Close
+      </button>
+    </div>
+    <div id="camTabs"><!-- tab buttons injected --></div>
   </div>
 
-  <!-- SIDEBAR -->
-  <div class="sidebar" id="sidebar">
+</div><!-- /body -->
+</div><!-- /app -->
 
-    <!-- RESOLUTION -->
-    <div class="panel">
-      <div class="panel-header">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-        </svg>
-        Resolution
-      </div>
-      <div class="res-buttons">
-        <button class="res-btn active" data-res="0" onclick="setResolution(0)">
-          480p<br><span style="font-size:10px; font-weight:400; opacity:0.6;">640×480</span>
-        </button>
-        <button class="res-btn" data-res="1" onclick="setResolution(1)">
-          720p<br><span style="font-size:10px; font-weight:400; opacity:0.6;">1280×720</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- FLASH -->
-    <div class="panel">
-      <div class="panel-header">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-        </svg>
-        Flash LED
-      </div>
-      <div class="flash-control">
-        <button class="flash-toggle" id="flashToggle" onclick="toggleFlash()"></button>
-        <div class="flash-slider-wrap">
-          <input type="range" min="0" max="255" value="0" id="flashSlider"
-                 oninput="setFlash(this.value)">
-        </div>
-        <span class="range-value" id="flashValue">0</span>
-      </div>
-    </div>
-
-    <!-- IMAGE QUALITY -->
-    <div class="panel">
-      <div class="panel-header">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-        </svg>
-        Image Quality
-      </div>
-      <div class="control-row">
-        <span class="control-label">JPEG Quality</span>
-        <div class="control-right">
-          <input type="range" min="4" max="63" value="12" data-param="quality"
-                 oninput="sendControl('quality', this.value); updateVal(this)">
-          <span class="range-value">12</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- IMAGE ADJUSTMENTS -->
-    <div class="panel">
-      <div class="panel-header">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-        </svg>
-        Image Adjustments
-      </div>
-      <div class="control-row">
-        <span class="control-label">Brightness</span>
-        <div class="control-right">
-          <input type="range" min="-2" max="2" value="0" data-param="brightness"
-                 oninput="sendControl('brightness', this.value); updateVal(this)">
-          <span class="range-value">0</span>
-        </div>
-      </div>
-      <div class="control-row">
-        <span class="control-label">Contrast</span>
-        <div class="control-right">
-          <input type="range" min="-2" max="2" value="0" data-param="contrast"
-                 oninput="sendControl('contrast', this.value); updateVal(this)">
-          <span class="range-value">0</span>
-        </div>
-      </div>
-      <div class="control-row">
-        <span class="control-label">Saturation</span>
-        <div class="control-right">
-          <input type="range" min="-2" max="2" value="0" data-param="saturation"
-                 oninput="sendControl('saturation', this.value); updateVal(this)">
-          <span class="range-value">0</span>
-        </div>
-      </div>
-      <div class="control-row">
-        <span class="control-label">Sharpness</span>
-        <div class="control-right">
-          <input type="range" min="-2" max="2" value="0" data-param="sharpness"
-                 oninput="sendControl('sharpness', this.value); updateVal(this)">
-          <span class="range-value">0</span>
-        </div>
-      </div>
-      <div class="control-row">
-        <span class="control-label">Special Effect</span>
-        <div class="control-right">
-          <select onchange="sendControl('special_effect', this.value)">
-            <option value="0">None</option>
-            <option value="1">Negative</option>
-            <option value="2">Grayscale</option>
-            <option value="3">Red Tint</option>
-            <option value="4">Green Tint</option>
-            <option value="5">Blue Tint</option>
-            <option value="6">Sepia</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <!-- WHITE BALANCE -->
-    <div class="panel">
-      <div class="panel-header">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-        </svg>
-        White Balance
-      </div>
-      <div class="toggle-row">
-        <span class="control-label">AWB</span>
-        <button class="toggle-switch on" data-param="awb" onclick="toggleParam(this, 'awb')"></button>
-      </div>
-      <div class="toggle-row">
-        <span class="control-label">AWB Gain</span>
-        <button class="toggle-switch on" data-param="awb_gain" onclick="toggleParam(this, 'awb_gain')"></button>
-      </div>
-      <div class="control-row">
-        <span class="control-label">WB Mode</span>
-        <div class="control-right">
-          <select onchange="sendControl('wb_mode', this.value)">
-            <option value="0">Auto</option>
-            <option value="1">Sunny</option>
-            <option value="2">Cloudy</option>
-            <option value="3">Office</option>
-            <option value="4">Home</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <!-- EXPOSURE -->
-    <div class="panel">
-      <div class="panel-header">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="22"/>
-          <path d="M12 2a10 10 0 0 1 0 20"/>
-        </svg>
-        Exposure
-      </div>
-      <div class="toggle-row">
-        <span class="control-label">Auto Exposure</span>
-        <button class="toggle-switch on" data-param="aec" onclick="toggleParam(this, 'aec')"></button>
-      </div>
-      <div class="toggle-row">
-        <span class="control-label">AEC DSP</span>
-        <button class="toggle-switch on" data-param="aec2" onclick="toggleParam(this, 'aec2')"></button>
-      </div>
-      <div class="control-row">
-        <span class="control-label">AE Level</span>
-        <div class="control-right">
-          <input type="range" min="-2" max="2" value="0" data-param="ae_level"
-                 oninput="sendControl('ae_level', this.value); updateVal(this)">
-          <span class="range-value">0</span>
-        </div>
-      </div>
-      <div class="control-row">
-        <span class="control-label">Exposure</span>
-        <div class="control-right">
-          <input type="range" min="0" max="1200" value="300" data-param="aec_value"
-                 oninput="sendControl('aec_value', this.value); updateVal(this)">
-          <span class="range-value">300</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- GAIN -->
-    <div class="panel">
-      <div class="panel-header">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
-          <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
-          <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
-          <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
-        </svg>
-        Gain Control
-      </div>
-      <div class="toggle-row">
-        <span class="control-label">Auto Gain</span>
-        <button class="toggle-switch on" data-param="agc" onclick="toggleParam(this, 'agc')"></button>
-      </div>
-      <div class="control-row">
-        <span class="control-label">Manual Gain</span>
-        <div class="control-right">
-          <input type="range" min="0" max="30" value="0" data-param="agc_gain"
-                 oninput="sendControl('agc_gain', this.value); updateVal(this)">
-          <span class="range-value">0</span>
-        </div>
-      </div>
-      <div class="control-row">
-        <span class="control-label">Gain Ceiling</span>
-        <div class="control-right">
-          <select onchange="sendControl('gainceiling', this.value)">
-            <option value="0">2x</option>
-            <option value="1">4x</option>
-            <option value="2">8x</option>
-            <option value="3">16x</option>
-            <option value="4">32x</option>
-            <option value="5">64x</option>
-            <option value="6" selected>128x</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <!-- CORRECTIONS -->
-    <div class="panel">
-      <div class="panel-header">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-        </svg>
-        Corrections
-      </div>
-      <div class="toggle-row">
-        <span class="control-label">BPC</span>
-        <button class="toggle-switch on" data-param="bpc" onclick="toggleParam(this, 'bpc')"></button>
-      </div>
-      <div class="toggle-row">
-        <span class="control-label">WPC</span>
-        <button class="toggle-switch on" data-param="wpc" onclick="toggleParam(this, 'wpc')"></button>
-      </div>
-      <div class="toggle-row">
-        <span class="control-label">Raw GMA</span>
-        <button class="toggle-switch on" data-param="raw_gma" onclick="toggleParam(this, 'raw_gma')"></button>
-      </div>
-      <div class="toggle-row">
-        <span class="control-label">Lens Correction</span>
-        <button class="toggle-switch on" data-param="lenc" onclick="toggleParam(this, 'lenc')"></button>
-      </div>
-    </div>
-
-    <!-- ORIENTATION -->
-    <div class="panel">
-      <div class="panel-header">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-        </svg>
-        Orientation
-      </div>
-      <div class="toggle-row">
-        <span class="control-label">H-Mirror</span>
-        <button class="toggle-switch" data-param="hmirror" onclick="toggleParam(this, 'hmirror')"></button>
-      </div>
-      <div class="toggle-row">
-        <span class="control-label">V-Flip</span>
-        <button class="toggle-switch" data-param="vflip" onclick="toggleParam(this, 'vflip')"></button>
-      </div>
-      <div class="toggle-row">
-        <span class="control-label">DCW (Downsize)</span>
-        <button class="toggle-switch on" data-param="dcw" onclick="toggleParam(this, 'dcw')"></button>
-      </div>
-      <div class="toggle-row">
-        <span class="control-label">Color Bar</span>
-        <button class="toggle-switch" data-param="colorbar" onclick="toggleParam(this, 'colorbar')"></button>
-      </div>
-    </div>
-
-  </div>
+<!-- Mobile bottom bar -->
+<div id="mobileBar">
+  <button class="mbar-btn" onclick="showGrid()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+      <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+    </svg>Grid
+  </button>
+  <button class="mbar-btn" onclick="toggleSidebar('ctrl')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+    </svg>Controls
+  </button>
+  <button class="mbar-btn" onclick="toggleSidebar('rec')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="var(--danger)" stroke="none"/>
+    </svg>Record
+  </button>
+  <button class="mbar-btn" onclick="toggleSidebar('stream')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 12 19.79 19.79 0 0 1 1.07 3.46 2 2 0 0 1 3.05 1.25h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.38-.38a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 21 16.92z"/>
+    </svg>Stream
+  </button>
 </div>
 
 <script>
-// ==================== WEBSOCKET ====================
+// ════════════════════════════════════════════════════════════════
+// State
+// ════════════════════════════════════════════════════════════════
+const cameras = {};         // id → Cam
+let selCamId  = null;       // selected cam for controls
+let focusId   = null;       // cam being focused full-screen
+let osdOn     = true;
+let ws        = null;
+let reconn    = null;
+let isRecording = {};       // cam_id → bool
 
-let ws = null;
-let reconnectTimer = null;
-const canvas = document.getElementById('streamCanvas');
-const ctx = canvas.getContext('2d');
-let frameCount = 0;
-let lastFpsTime = performance.now();
-let localFps = 0;
-let isConnected = false;
-
-function connect() {
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${location.host}/ws`;
-
-  ws = new WebSocket(wsUrl);
-  ws.binaryType = 'arraybuffer';
-
-  ws.onopen = () => {
-    isConnected = true;
-    updateConnectionStatus(true);
-    clearTimeout(reconnectTimer);
-    console.log('WebSocket connected');
-  };
-
-  ws.onmessage = (event) => {
-    if (typeof event.data === 'string') {
-      // JSON stats message
-      try {
-        const stats = JSON.parse(event.data);
-        if (stats.type === 'stats') {
-          updateStats(stats);
-        }
-      } catch (e) {}
-    } else {
-      // Binary frame data (JPEG)
-      displayFrame(event.data);
-    }
-  };
-
-  ws.onclose = () => {
-    isConnected = false;
-    updateConnectionStatus(false);
-    console.log('WebSocket disconnected, reconnecting...');
-    reconnectTimer = setTimeout(connect, 1000);
-  };
-
-  ws.onerror = () => {
-    ws.close();
-  };
-}
-
-// ==================== FRAME DISPLAY ====================
-
-// Use a pool of Image objects and only display the most recent
-let pendingFrame = null;
-let isRendering = false;
-
-function displayFrame(jpegData) {
-  // Always keep only the latest frame - discard stale
-  const blob = new Blob([jpegData], { type: 'image/jpeg' });
-  const url = URL.createObjectURL(blob);
-
-  // If already rendering, just update the pending frame
-  if (isRendering) {
-    if (pendingFrame) {
-      URL.revokeObjectURL(pendingFrame);
-    }
-    pendingFrame = url;
-    return;
+// ════════════════════════════════════════════════════════════════
+// Camera model
+// ════════════════════════════════════════════════════════════════
+class Cam {
+  constructor(id) {
+    this.id = id; this.name = `CAM-${id}`;
+    this.connected = false; this.ip = '';
+    this.rssi = 0; this.free_heap_kb = 0;
+    this.uptime_secs = 0; this.esp_fps = 0;
+    this.resolution = 'VGA (480p)'; this.kbps = 0;
+    this.frames = 0; this.dropped = 0;
+    this.recording = false; this.rec_frames = 0; this.rec_duration = 0;
+    // render
+    this.canvas = null; this.ctx = null;
+    this.pending = null; this.rendering = false;
+    this.localFps = 0; this._fpsN = 0; this._fpsT = performance.now();
   }
-
-  renderFrame(url);
+  upd(d) {
+    for (const k of Object.keys(d)) if (k in this) this[k] = d[k];
+    if (d.name) this.name = d.name;
+    if (d.ip)   this.ip   = d.ip;
+  }
 }
 
-function renderFrame(url) {
-  isRendering = true;
-  const img = new Image();
-
-  img.onload = () => {
-    // Resize canvas if needed
-    if (canvas.width !== img.width || canvas.height !== img.height) {
-      canvas.width = img.width;
-      canvas.height = img.height;
-    }
-
-    ctx.drawImage(img, 0, 0);
-    URL.revokeObjectURL(url);
-
-    // Update FPS
-    frameCount++;
-    const now = performance.now();
-    if (now - lastFpsTime >= 1000) {
-      localFps = Math.round(frameCount * 1000 / (now - lastFpsTime));
-      frameCount = 0;
-      lastFpsTime = now;
-      document.getElementById('fpsValue').textContent = localFps;
-    }
-
-    // Show live badge
-    document.getElementById('noSignal').style.display = 'none';
-    document.getElementById('liveBadge').style.display = 'flex';
-
-    // Update latency bar based on FPS
-    updateLatencyBar(localFps);
-
-    isRendering = false;
-
-    // Render pending frame if any (always show latest)
-    if (pendingFrame) {
-      const next = pendingFrame;
-      pendingFrame = null;
-      renderFrame(next);
-    }
-  };
-
-  img.onerror = () => {
-    URL.revokeObjectURL(url);
-    isRendering = false;
-
-    if (pendingFrame) {
-      const next = pendingFrame;
-      pendingFrame = null;
-      renderFrame(next);
-    }
-  };
-
-  img.src = url;
+// ════════════════════════════════════════════════════════════════
+// WebSocket
+// ════════════════════════════════════════════════════════════════
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws.binaryType = 'arraybuffer';
+  ws.onopen  = () => clearTimeout(reconn);
+  ws.onclose = () => { reconn = setTimeout(connect, 1200); };
+  ws.onerror = () => ws.close();
+  ws.onmessage = e => typeof e.data === 'string'
+    ? handleText(JSON.parse(e.data))
+    : handleBinary(e.data);
 }
 
-// ==================== CONTROLS ====================
-
-function sendControl(param, value) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({
-    action: 'control',
-    param: param,
-    value: parseInt(value)
-  }));
+function wsSend(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
 
-function setResolution(res) {
-  sendControl('resolution', res);
-  document.querySelectorAll('.res-btn').forEach(btn => {
-    btn.classList.toggle('active', parseInt(btn.dataset.res) === res);
+function ctrl(param, value) {
+  if (selCamId === null) return;
+  wsSend({ action: 'control', cam_id: selCamId, param, value });
+}
+
+// ════════════════════════════════════════════════════════════════
+// Message handling
+// ════════════════════════════════════════════════════════════════
+function handleText(msg) {
+  if (msg.type === 'cam_list') {
+    Object.values(msg.cameras).forEach(d => ensureCam(+d.cam_id, d));
+  } else if (msg.type === 'cam_joined' || msg.type === 'cam_status') {
+    ensureCam(+msg.cam_id, msg.data);
+  } else if (msg.type === 'cam_removed') {
+    removeCam(+msg.cam_id);
+  } else if (msg.type === 'stats') {
+    Object.entries(msg.cameras).forEach(([cid, d]) => {
+      const cam = cameras[+cid];
+      if (cam) { cam.upd(d); updateCard(cam); }
+    });
+    recount();
+  }
+}
+
+function handleBinary(buf) {
+  const a = new Uint8Array(buf);
+  if (a.length < 3) return;
+  const cam = cameras[a[0]];
+  if (!cam) return;
+
+  // local FPS
+  cam._fpsN++;
+  const now = performance.now();
+  if (now - cam._fpsT >= 1000) {
+    cam.localFps = Math.round(cam._fpsN * 1000 / (now - cam._fpsT));
+    cam._fpsN = 0; cam._fpsT = now;
+  }
+  renderToCanvas(cam, buf.slice(1));
+}
+
+// ════════════════════════════════════════════════════════════════
+// Camera DOM management
+// ════════════════════════════════════════════════════════════════
+function ensureCam(id, data) {
+  let cam = cameras[id];
+  const isNew = !cam;
+  if (!cam) { cam = new Cam(id); cameras[id] = cam; }
+  cam.upd(data);
+  if (isNew) { buildCell(cam); buildTab(cam); addSelOpts(cam); }
+  updateCard(cam); updateTabState(cam);
+  if (selCamId === null) { selCamId = id; }
+  reflow(); recount();
+}
+
+function removeCam(id) {
+  const cam = cameras[id]; if (!cam) return;
+  document.getElementById(`cell-${id}`)?.remove();
+  document.getElementById(`tab-${id}`)?.remove();
+  removeSelOpts(id);
+  delete cameras[id];
+  if (focusId === id) showGrid();
+  if (selCamId === id) selCamId = +Object.keys(cameras)[0] ?? null;
+  reflow(); recount();
+}
+
+function buildCell(cam) {
+  const cell = document.createElement('div');
+  cell.className = 'cam-cell'; cell.id = `cell-${cam.id}`;
+  cell.onclick = () => focusCam(cam.id);
+
+  const cv = document.createElement('canvas');
+  cv.id = `cv-${cam.id}`; cv.width = 640; cv.height = 480;
+  cell.appendChild(cv);
+
+  // No-signal placeholder
+  const ns = document.createElement('div');
+  ns.className = 'no-sig'; ns.id = `ns-${cam.id}`;
+  ns.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <rect x="2" y="3" width="20" height="14" rx="2"/>
+    <line x1="8" y1="21" x2="16" y2="21"/>
+    <line x1="12" y1="17" x2="12" y2="21"/>
+    <line x1="2" y1="3" x2="22" y2="17" stroke-width="2"/>
+  </svg><p>${cam.name}</p>`;
+  cell.appendChild(ns);
+
+  // Hover overlay
+  const ov = document.createElement('div');
+  ov.className = 'cell-overlay';
+  const btnFocus = document.createElement('button');
+  btnFocus.className = 'cell-btn';
+  btnFocus.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg> Focus';
+  btnFocus.onclick = e => { e.stopPropagation(); focusCam(cam.id); };
+  const btnSnap = document.createElement('button');
+  btnSnap.className = 'cell-btn';
+  btnSnap.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
+  btnSnap.onclick = e => { e.stopPropagation(); snapCam(cam.id); };
+  const btnRec = document.createElement('button');
+  btnRec.className = 'cell-btn'; btnRec.id = `crec-${cam.id}`;
+  btnRec.innerHTML = '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="9"/></svg> REC';
+  btnRec.onclick = e => { e.stopPropagation(); toggleRecFor(cam.id); };
+  ov.append(btnFocus, btnSnap, btnRec);
+  cell.appendChild(ov);
+
+  document.getElementById('gridView').appendChild(cell);
+  cam.canvas = cv; cam.ctx = cv.getContext('2d');
+}
+
+function buildTab(cam) {
+  const t = document.createElement('button');
+  t.className = 'cam-tab offline'; t.id = `tab-${cam.id}`;
+  t.innerHTML = `<div class="td"></div><span>${cam.name}</span>`;
+  t.onclick = () => { selCamId = cam.id; focusCam(cam.id); };
+  document.getElementById('camTabs').appendChild(t);
+
+  // Camera card in sidebar
+  const card = document.createElement('div');
+  card.className = 'cam-card'; card.id = `card-${cam.id}`;
+  card.onclick = () => { selCamId = cam.id; focusCam(cam.id); };
+  card.innerHTML = `<div class="cam-dot" id="dot-${cam.id}"></div>
+    <div class="cam-info">
+      <div class="cam-name" id="cname-${cam.id}">${cam.name}</div>
+      <div class="cam-sub" id="csub-${cam.id}">${cam.ip || '—'}</div>
+    </div>
+    <div class="cam-fps" id="cfps-${cam.id}">—</div>`;
+  document.getElementById('camList').appendChild(card);
+}
+
+function addSelOpts(cam) {
+  ['recCamSel', 'streamCamSel'].forEach(sid => {
+    const sel = document.getElementById(sid);
+    const opt = document.createElement('option');
+    opt.value = cam.id; opt.id = `opt-${sid}-${cam.id}`;
+    opt.textContent = cam.name;
+    sel.appendChild(opt);
   });
 }
 
-function toggleFlash() {
-  const btn = document.getElementById('flashToggle');
-  const slider = document.getElementById('flashSlider');
-  const isOn = btn.classList.toggle('on');
+function removeSelOpts(id) {
+  ['recCamSel', 'streamCamSel'].forEach(sid => {
+    document.getElementById(`opt-${sid}-${id}`)?.remove();
+  });
+}
 
-  if (isOn) {
-    const val = parseInt(slider.value) || 128;
-    slider.value = val;
-    setFlash(val);
-  } else {
-    setFlash(0);
+function updateCard(cam) {
+  const dot = document.getElementById(`dot-${cam.id}`);
+  const cname = document.getElementById(`cname-${cam.id}`);
+  const csub  = document.getElementById(`csub-${cam.id}`);
+  const cfps  = document.getElementById(`cfps-${cam.id}`);
+  if (dot)   { dot.className = 'cam-dot' + (cam.connected ? ' live' : ''); }
+  if (cname) cname.textContent = cam.name;
+  if (csub)  csub.textContent  = cam.ip || '—';
+  if (cfps)  cfps.textContent  = cam.connected
+    ? `${cam.localFps || cam.esp_fps || 0} fps`
+    : 'offline';
+  // update recording button
+  const cr = document.getElementById(`crec-${cam.id}`);
+  if (cr) cr.style.background = cam.recording ? 'rgba(127,0,0,.7)' : '';
+  updateTabState(cam);
+}
+
+function updateTabState(cam) {
+  const t = document.getElementById(`tab-${cam.id}`); if (!t) return;
+  t.className = 'cam-tab ' + (cam.connected ? 'live' : 'offline');
+  t.querySelector('span').textContent = cam.name;
+}
+
+function reflow() {
+  const n = Object.keys(cameras).length;
+  const gv = document.getElementById('gridView');
+  gv.className = '';
+  if (n === 2) gv.classList.add('c2');
+  else if (n === 3) gv.classList.add('c3');
+  else if (n === 4) gv.classList.add('c4');
+  else if (n >= 5) gv.classList.add('c5plus');
+}
+
+function recount() {
+  const live = Object.values(cameras).filter(c => c.connected).length;
+  const b = document.getElementById('liveBadge');
+  b.textContent = `${live} LIVE`;
+  b.className = live > 0 ? 'on' : '';
+}
+
+// ════════════════════════════════════════════════════════════════
+// Frame rendering
+// ════════════════════════════════════════════════════════════════
+function renderToCanvas(cam, jpegBuf) {
+  const blob = new Blob([jpegBuf], { type: 'image/jpeg' });
+  const url  = URL.createObjectURL(blob);
+  if (cam.rendering) {
+    if (cam.pending) URL.revokeObjectURL(cam.pending);
+    cam.pending = url; return;
+  }
+  _draw(cam, url);
+}
+
+function _draw(cam, url) {
+  cam.rendering = true;
+  const img = new Image();
+  img.onload = () => {
+    // Grid canvas
+    resizeIfNeeded(cam.canvas, img);
+    cam.ctx.drawImage(img, 0, 0);
+    if (osdOn) drawOSD(cam.ctx, cam);
+    // Hide no-signal once we have a frame
+    const ns = document.getElementById(`ns-${cam.id}`);
+    if (ns) ns.style.display = 'none';
+    // Focus canvas
+    if (focusId === cam.id) {
+      const fc = document.getElementById('focusCanvas');
+      resizeIfNeeded(fc, img);
+      fc.getContext('2d').drawImage(img, 0, 0);
+      if (osdOn) drawOSD(fc.getContext('2d'), cam);
+    }
+    URL.revokeObjectURL(url);
+    cam.rendering = false;
+    if (cam.pending) { const n = cam.pending; cam.pending = null; _draw(cam, n); }
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    cam.rendering = false;
+    if (cam.pending) { const n = cam.pending; cam.pending = null; _draw(cam, n); }
+  };
+  img.src = url;
+}
+
+function resizeIfNeeded(canvas, img) {
+  if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
+    canvas.width  = img.naturalWidth;
+    canvas.height = img.naturalHeight;
   }
 }
 
-function setFlash(val) {
-  val = parseInt(val);
-  document.getElementById('flashValue').textContent = val;
-  sendControl('flash', val);
+// ════════════════════════════════════════════════════════════════
+// OSD
+// ════════════════════════════════════════════════════════════════
+function drawOSD(ctx, cam) {
+  const W   = ctx.canvas.width, H = ctx.canvas.height;
+  const sc  = Math.min(W / 640, H / 480, 2);
+  const f   = n => Math.max(8, Math.round(n * sc));
+  const pad = Math.round(8 * sc);
+  const FNT = "'Inter','Segoe UI',system-ui,sans-serif";
+  ctx.save();
+  ctx.textBaseline = 'middle';
 
-  const btn = document.getElementById('flashToggle');
-  if (val > 0) {
-    btn.classList.add('on');
+  // ── helper: semi-transparent glass panel with 1px border ────────
+  function glassPanel(x, y, w, h, r) {
+    ctx.fillStyle = 'rgba(5,8,14,.74)';
+    rrect(ctx, x, y, w, h, r || 5); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.07)';
+    ctx.lineWidth = 1;
+    rrect(ctx, x, y, w, h, r || 5); ctx.stroke();
+  }
+
+  // ── TOP-LEFT: camera identity chip ──────────────────────────────
+  const dotR = Math.round(3.5 * sc);
+  const cPad = Math.round(7 * sc);
+  ctx.font = `700 ${f(11)}px ${FNT}`;
+  const nameW = ctx.measureText(cam.name).width;
+  const cW = cPad + dotR * 2 + Math.round(5 * sc) + nameW + cPad;
+  const cH = f(22);
+  glassPanel(pad, pad, cW, cH);
+  // accent left stripe
+  ctx.fillStyle = '#0ea5e9';
+  rrect(ctx, pad, pad + 3, Math.round(2.5 * sc), cH - 6, 1); ctx.fill();
+  // status dot
+  ctx.fillStyle = cam.connected ? '#22c55e' : '#ef4444';
+  if (cam.connected) { ctx.shadowColor = '#22c55e'; ctx.shadowBlur = 6; }
+  ctx.beginPath();
+  ctx.arc(pad + cPad + dotR, pad + cH / 2, dotR, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
+  // camera name
+  ctx.font = `700 ${f(11)}px ${FNT}`;
+  ctx.fillStyle = '#e8edf8';
+  ctx.fillText(cam.name, pad + cPad + dotR * 2 + Math.round(5 * sc), pad + cH / 2);
+  // IP subtitle
+  if (cam.ip) {
+    ctx.font = `${f(9)}px ${FNT}`;
+    ctx.fillStyle = 'rgba(255,255,255,.32)';
+    ctx.fillText(cam.ip, pad + cPad, pad + cH + f(9));
+  }
+
+  // ── TOP-RIGHT: live clock ────────────────────────────────────────
+  const now  = new Date();
+  const clk  = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+  const dat  = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+  ctx.font = `700 ${f(11)}px ${FNT}`;
+  const clkW = ctx.measureText(clk).width;
+  ctx.font = `${f(9)}px ${FNT}`;
+  const datW = ctx.measureText(dat).width;
+  const tW   = Math.max(clkW, datW) + cPad * 2;
+  const tH   = f(11) + f(9) + Math.round(7 * sc);
+  const tX   = W - pad - tW;
+  glassPanel(tX, pad, tW, tH);
+  ctx.font = `700 ${f(11)}px ${FNT}`;
+  ctx.fillStyle = '#e8edf8';
+  ctx.textAlign = 'center';
+  ctx.fillText(clk, tX + tW / 2, pad + f(11) * 0.5 + Math.round(3 * sc));
+  ctx.font = `${f(9)}px ${FNT}`;
+  ctx.fillStyle = 'rgba(255,255,255,.38)';
+  ctx.fillText(dat, tX + tW / 2, pad + f(11) + Math.round(4 * sc) + f(9) * 0.5);
+  ctx.textAlign = 'left';
+
+  // ── TOP-CENTER: REC badge ────────────────────────────────────────
+  if (cam.recording) {
+    const rTxt = `\u25C9  REC    ${fmtDur(cam.rec_duration || 0)}`;
+    ctx.font = `700 ${f(11)}px ${FNT}`;
+    const rW  = ctx.measureText(rTxt).width + pad * 2.5;
+    const rx  = (W - rW) / 2;
+    ctx.fillStyle = 'rgba(140,0,0,.9)';
+    rrect(ctx, rx, pad, rW, cH * 0.95, 4); ctx.fill();
+    ctx.strokeStyle = 'rgba(248,113,113,.45)';
+    ctx.lineWidth = 1;
+    rrect(ctx, rx, pad, rW, cH * 0.95, 4); ctx.stroke();
+    ctx.fillStyle = '#fca5a5';
+    ctx.textAlign = 'center';
+    ctx.fillText(rTxt, W / 2, pad + cH * 0.475);
+    ctx.textAlign = 'left';
+  }
+
+  // ── BOTTOM-RIGHT: telemetry panel ────────────────────────────────
+  const fps    = cam.localFps || cam.esp_fps || 0;
+  const fpsCol = fps >= 25 ? '#22c55e' : fps >= 14 ? '#f59e0b' : '#ef4444';
+  const kbps   = (cam.kbps || 0).toFixed(0);
+  const sig    = Math.min(4, Math.max(0, Math.round((cam.rssi + 100) / 12)));
+  const sigCol = rssiColor(cam.rssi);
+  const res    = cam.resolution || '\u2014';
+  const hkb    = cam.free_heap_kb || 0;
+  const upt    = fmtDur(cam.uptime_secs || 0);
+  const frm    = cam.frames  || 0;
+  const drp    = cam.dropped || 0;
+  const drpCol = drp > 0 ? '#f59e0b' : 'rgba(255,255,255,.55)';
+
+  // wifi bar geometry
+  const bw = Math.round(3 * sc), bh = Math.round(4 * sc), bg = Math.round(2 * sc);
+  const barsW = 4 * bw + 3 * bg;
+
+  // measure 2-col layout
+  ctx.font = `700 ${f(14)}px ${FNT}`;
+  const fpsTW = ctx.measureText(`${fps} FPS`).width;
+  ctx.font = `${f(10)}px ${FNT}`;
+  const col1 = Math.max(
+    ctx.measureText(`\u21C5 ${kbps} kb/s`).width,
+    ctx.measureText(`\u25C8 HEAP ${hkb} KB`).width,
+    ctx.measureText(`\u25BC ${frm}  \u25B2 ${drp} drp`).width
+  );
+  const col2 = Math.max(
+    ctx.measureText(res).width,
+    ctx.measureText(`${cam.rssi} dBm`).width + barsW + Math.round(6 * sc),
+    ctx.measureText(`\u23F1 ${upt}`).width
+  );
+  const CGAP  = Math.round(12 * sc);
+  const PPAD  = Math.round(8 * sc);
+  const ROW   = f(13);
+  const inner = Math.max(fpsTW + CGAP + ctx.measureText(res).width, col1 + CGAP + col2);
+  const panelW = inner + PPAD * 2;
+  const panelH = Math.round(ROW * 1.5) + Math.round(5 * sc) + ROW * 3 + PPAD * 2 + Math.round(4 * sc);
+  const panelX = W - pad - panelW;
+  const panelY = H - pad - panelH;
+
+  glassPanel(panelX, panelY, panelW, panelH, 6);
+  // accent top strip
+  ctx.fillStyle = 'rgba(14,165,233,.5)';
+  rrect(ctx, panelX + 6, panelY, panelW - 12, Math.round(2 * sc), 1); ctx.fill();
+
+  let cy = panelY + PPAD;
+  const LX = panelX + PPAD;
+  const RX = panelX + panelW - PPAD;
+
+  // Row 0: FPS (large, left) | resolution (right, muted)
+  ctx.font = `700 ${f(14)}px ${FNT}`;
+  ctx.fillStyle = fpsCol;
+  ctx.fillText(`${fps} FPS`, LX, cy + ROW * 0.7);
+  ctx.font = `${f(10)}px ${FNT}`;
+  ctx.fillStyle = 'rgba(255,255,255,.42)';
+  ctx.textAlign = 'right';
+  ctx.fillText(res, RX, cy + ROW * 0.7);
+  ctx.textAlign = 'left';
+  cy += Math.round(ROW * 1.5);
+
+  // divider
+  ctx.strokeStyle = 'rgba(255,255,255,.08)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(LX, cy); ctx.lineTo(RX, cy); ctx.stroke();
+  cy += Math.round(5 * sc);
+
+  // Row 1: bitrate | wifi bars + RSSI dBm
+  ctx.font = `${f(10)}px ${FNT}`;
+  ctx.fillStyle = 'rgba(255,255,255,.62)';
+  ctx.fillText(`\u21C5 ${kbps} kb/s`, LX, cy + ROW * 0.5);
+  const barX = RX - barsW;
+  for (let i = 0; i < 4; i++) {
+    const bhi = bh * (i + 1);
+    ctx.fillStyle = i < sig ? sigCol : 'rgba(255,255,255,.14)';
+    ctx.fillRect(barX + i * (bw + bg), cy + ROW - bhi, bw, bhi);
+  }
+  ctx.font = `${f(9)}px ${FNT}`;
+  ctx.fillStyle = sigCol;
+  ctx.textAlign = 'right';
+  ctx.fillText(`${cam.rssi} dBm`, barX - Math.round(5 * sc), cy + ROW * 0.5);
+  ctx.textAlign = 'left';
+  cy += ROW;
+
+  // Row 2: heap | uptime
+  ctx.font = `${f(10)}px ${FNT}`;
+  ctx.fillStyle = 'rgba(255,255,255,.62)';
+  ctx.fillText(`\u25C8 HEAP ${hkb} KB`, LX, cy + ROW * 0.5);
+  ctx.fillStyle = 'rgba(255,255,255,.42)';
+  ctx.textAlign = 'right';
+  ctx.fillText(`\u23F1 ${upt}`, RX, cy + ROW * 0.5);
+  ctx.textAlign = 'left';
+  cy += ROW;
+
+  // Row 3: frame count | drop count
+  ctx.font = `${f(10)}px ${FNT}`;
+  ctx.fillStyle = 'rgba(255,255,255,.55)';
+  ctx.fillText(`\u25BC ${frm}`, LX, cy + ROW * 0.5);
+  ctx.fillStyle = drpCol;
+  ctx.textAlign = 'right';
+  ctx.fillText(`\u25B2 ${drp} drp`, RX, cy + ROW * 0.5);
+  ctx.textAlign = 'left';
+
+  ctx.restore();
+}
+
+function shadow(ctx, fn) { ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 4; fn(); ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; }
+function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+function rssiColor(r) { return r >= -60 ? '#22c55e' : r >= -75 ? '#f59e0b' : '#ef4444'; }
+function fmtDur(s) {
+  s = Math.round(s);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+  if (h) return `${h}:${pad2(m)}:${pad2(ss)}`;
+  return `${m}:${pad2(ss)}`;
+}
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+// ════════════════════════════════════════════════════════════════
+// Focus / grid
+// ════════════════════════════════════════════════════════════════
+function focusCam(id) {
+  focusId = id;
+  const ov = document.getElementById('focusOverlay');
+  ov.classList.add('show');
+  // Copy latest frame if available
+  const cam = cameras[id];
+  if (cam && cam.canvas) {
+    const fc = document.getElementById('focusCanvas');
+    fc.width  = cam.canvas.width;
+    fc.height = cam.canvas.height;
+    fc.getContext('2d').drawImage(cam.canvas, 0, 0);
+    if (osdOn) drawOSD(fc.getContext('2d'), cam);
+  }
+  selCamId = id;
+}
+
+function showGrid() {
+  focusId = null;
+  document.getElementById('focusOverlay').classList.remove('show');
+}
+
+// ════════════════════════════════════════════════════════════════
+// Recording
+// ════════════════════════════════════════════════════════════════
+async function toggleRec() {
+  const sel = document.getElementById('recCamSel');
+  const cid = parseInt(sel.value);
+  if (isNaN(cid)) return;
+  if (isRecording[cid]) {
+    await stopRec(cid);
   } else {
-    btn.classList.remove('on');
+    await startRec(cid);
   }
 }
 
-function toggleParam(btn, param) {
-  const isOn = btn.classList.toggle('on');
-  sendControl(param, isOn ? 1 : 0);
-}
-
-function updateVal(input) {
-  const valueSpan = input.parentElement.querySelector('.range-value');
-  if (valueSpan) valueSpan.textContent = input.value;
-}
-
-// ==================== STATUS ====================
-
-function updateConnectionStatus(connected) {
-  const dot = document.getElementById('statusDot');
-  const text = document.getElementById('statusText');
-
-  if (connected) {
-    dot.classList.add('connected');
-    text.textContent = 'Connected';
-    text.style.color = 'var(--accent2)';
-  } else {
-    dot.classList.remove('connected');
-    text.textContent = 'Disconnected';
-    text.style.color = 'var(--danger)';
-    document.getElementById('liveBadge').style.display = 'none';
-    document.getElementById('noSignal').style.display = '';
+async function startRec(cid) {
+  const r = await fetch(`/api/rec/start?cam_id=${cid}`, { method: 'POST' });
+  if (r.ok) {
+    isRecording[cid] = true;
+    const btn = document.getElementById('btnRec');
+    btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg> STOP';
+    btn.classList.add('active');
+    document.getElementById('recStat').textContent = 'Recording…';
   }
 }
 
-function updateStats(stats) {
-  document.getElementById('framesValue').textContent = stats.frames || 0;
-  document.getElementById('droppedValue').textContent = stats.dropped || 0;
-
-  const bytes = stats.bytes || 0;
-  if (bytes > 1048576) {
-    document.getElementById('dataValue').textContent = (bytes / 1048576).toFixed(1) + ' MB';
+async function stopRec(cid) {
+  document.getElementById('recStat').textContent = 'Building AVI…';
+  const r = await fetch(`/api/rec/stop?cam_id=${cid}`, { method: 'POST' });
+  isRecording[cid] = false;
+  const btn = document.getElementById('btnRec');
+  btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="9"/></svg> REC';
+  btn.classList.remove('active');
+  if (r.ok && r.status !== 204) {
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `cam${cid}_${new Date().toISOString().replace(/[:.]/g, '-')}.avi`;
+    a.click(); URL.revokeObjectURL(a.href);
+    document.getElementById('recStat').textContent = 'Saved.';
   } else {
-    document.getElementById('dataValue').textContent = (bytes / 1024).toFixed(0) + ' KB';
+    document.getElementById('recStat').textContent = r.status === 204 ? 'No frames captured.' : 'Error.';
   }
 }
 
-function updateLatencyBar(fps) {
-  const bar = document.getElementById('latencyBar');
-  const maxFps = 30;
-  const pct = Math.min(100, (fps / maxFps) * 100);
-  bar.style.width = pct + '%';
-
-  bar.classList.remove('warn', 'bad');
-  if (fps < 10) bar.classList.add('bad');
-  else if (fps < 20) bar.classList.add('warn');
+async function toggleRecFor(cid) {
+  if (isRecording[cid]) await stopRec(cid);
+  else await startRec(cid);
 }
 
-// ==================== FULLSCREEN ====================
+async function snapCam(cid) {
+  const r = await fetch(`/api/snapshot?cam_id=${cid}`);
+  if (!r.ok) return;
+  const blob = await r.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `snap_cam${cid}_${Date.now()}.jpg`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
 
-document.getElementById('fullscreenBtn').addEventListener('click', () => {
-  const container = document.getElementById('videoContainer');
-  if (!document.fullscreenElement) {
-    container.requestFullscreen().catch(() => {});
+function doSnap() {
+  const sel = document.getElementById('recCamSel');
+  const cid = parseInt(sel.value);
+  if (!isNaN(cid)) snapCam(cid);
+}
+
+// ════════════════════════════════════════════════════════════════
+// Stream URLs
+// ════════════════════════════════════════════════════════════════
+function updateStreamUrls() {
+  const sel = document.getElementById('streamCamSel');
+  const cid = sel.value;
+  const base = `${location.protocol}//${location.host}`;
+  document.getElementById('urlMjpeg').value = cid !== '' ? `${base}/stream/${cid}` : '';
+  document.getElementById('urlSse').value   = cid !== '' ? `${base}/sse/${cid}` : '';
+}
+
+function copyUrl(elId, btn) {
+  const val = document.getElementById(elId).value;
+  if (!val) return;
+  navigator.clipboard.writeText(val).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓'; btn.style.background = 'var(--live)'; btn.style.color = '#fff';
+    setTimeout(() => { btn.textContent = orig; btn.style.background = ''; btn.style.color = ''; }, 1400);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// Sidebar tabs / panels
+// ════════════════════════════════════════════════════════════════
+function showPanel(name) {
+  document.querySelectorAll('.side-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.s-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`panel-${name}`)?.classList.add('active');
+  document.querySelectorAll('.s-tab').forEach((t, i) => {
+    const map = ['ctrl', 'rec', 'stream'];
+    if (map[i] === name) t.classList.add('active');
+  });
+}
+
+// Mobile sidebar toggle
+function toggleSidebar(panel) {
+  const sb = document.getElementById('sidebar');
+  const isOpen = sb.classList.contains('open');
+  let currentPanel = document.querySelector('.side-panel.active')?.id.replace('panel-', '');
+  if (isOpen && currentPanel === panel) {
+    sb.classList.remove('open');
   } else {
-    document.exitFullscreen();
+    showPanel(panel); sb.classList.add('open');
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+// OSD toggle
+// ════════════════════════════════════════════════════════════════
+document.getElementById('osdToggle').addEventListener('click', function() {
+  osdOn = !osdOn;
+  this.classList.toggle('active', osdOn);
 });
 
-// ==================== POLL STATS ====================
-
-async function pollStats() {
-  try {
-    const res = await fetch('/api/stats');
-    const stats = await res.json();
-    updateStats({ frames: stats.frames_received, dropped: stats.frames_dropped, bytes: stats.bytes_received });
-
-    if (stats.esp32_connected) {
-      const dot = document.getElementById('statusDot');
-      if (!dot.classList.contains('connected') && isConnected) {
-        dot.classList.add('connected');
-      }
-    }
-  } catch (e) {}
-}
-
-setInterval(pollStats, 2000);
-
-// ==================== INIT ====================
-
+// ════════════════════════════════════════════════════════════════
+// Boot
+// ════════════════════════════════════════════════════════════════
 connect();
 </script>
 </body>

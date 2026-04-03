@@ -1,0 +1,14 @@
+# ESP32-CAM AI Server dependencies
+
+# Async HTTP + WebSocket server/client
+aiohttp>=3.9.0
+
+# Image decoding and processing
+opencv-python-headless>=4.8.0
+
+# Array operations
+numpy>=1.24.0
+
+# YOLO inference (downloads models automatically on first load)
+# Models: yolov8n.pt (~6MB), yolov8s.pt (~22MB), yolov8m.pt (~50MB)
+ultralytics>=8.0.0
