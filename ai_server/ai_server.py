@@ -1,31 +1,51 @@
 """
-ESP32-CAM AI Detection Server
-==============================
+ESP32-CAM AI Detection Server  — YOLO26s Full Feature Edition
+==============================================================
 Port 8181 — HTTP + WebSocket AI dashboard
 
 Architecture:
   1. Connects to streaming server ws://localhost:8080/ws as a WS CLIENT
-  2. Forwards every JPEG frame IMMEDIATELY to dashboard clients (zero-latency pass-through)
-  3. Asynchronously decodes JPEG → runs YOLO → sends JSON detections to dashboard
-  4. Dashboard draws bounding boxes on canvas in JS (no server-side annotation cost)
+  2. Forwards every JPEG frame IMMEDIATELY to dashboard (zero-latency pass-through)
+  3. Asynchronously decodes JPEG → runs YOLO26s → sends JSON results to dashboard
+  4. Dashboard draws overlays on canvas in JS (no server-side annotation cost)
+
+YOLO26s Task Modes (switchable at runtime):
+  - detect    : Object detection  (boxes + labels)
+  - segment   : Instance segmentation (masks + boxes)
+  - pose      : Pose estimation  (keypoints + boxes)
+  - obb       : Oriented bounding boxes
+  - track     : Multi-object tracking (ByteTrack / BoT-SORT)
+  - classify  : Image classification (top-k)
 
 WebSocket (server → dashboard):
-  binary : [cam_id:1][jpeg:N]          — live frame (pass-through, no annotation)
-  JSON   : {"type":"detections", ...}  — detection results for current frame
-  JSON   : {"type":"cam_list", ...}    — camera list from streaming server
-  JSON   : {"type":"cam_joined", ...}
-  JSON   : {"type":"cam_removed", ...}
-  JSON   : {"type":"stats", ...}
-  JSON   : {"type":"server_status", "streaming":bool}
+  binary : [cam_id:1][jpeg:N]             — live frame pass-through
+  JSON   : {"type":"detections",   ...}   — detect / segment / obb results
+  JSON   : {"type":"poses",        ...}   — pose estimation results
+  JSON   : {"type":"tracks",       ...}   — tracking results
+  JSON   : {"type":"classification",...}  — classification top-k results
+  JSON   : {"type":"cam_list",     ...}
+  JSON   : {"type":"cam_joined",   ...}
+  JSON   : {"type":"cam_removed",  ...}
+  JSON   : {"type":"stats",        ...}
+  JSON   : {"type":"server_status","streaming":bool}
   JSON   : {"type":"model_loading" | "model_loaded", ...}
-  JSON   : {"type":"ai_status", "ai_on":bool}
+  JSON   : {"type":"ai_status",    "ai_on":bool}
+  JSON   : {"type":"task_changed", "task":str}
 
 WebSocket (dashboard → server):
-  {"action":"load_model",  "model":"yolov8n"}
-  {"action":"set_ai",      "enabled":true}
-  {"action":"set_conf",    "cam_id":N|null, "value":0.4}
-  {"action":"set_iou",     "cam_id":N|null, "value":0.45}
-  {"action":"set_classes", "cam_id":N|null, "classes":[0,2]|null}
+  {"action":"load_model",    "model":"yolo26s"}
+  {"action":"set_task",      "task":"detect"|"segment"|"pose"|"obb"|"track"|"classify"}
+  {"action":"set_ai",        "enabled":true}
+  {"action":"set_conf",      "cam_id":N|null, "value":0.4}
+  {"action":"set_iou",       "cam_id":N|null, "value":0.45}
+  {"action":"set_classes",   "cam_id":N|null, "classes":[0,2]|null}
+  {"action":"set_tracker",   "tracker":"bytetrack"|"botsort"}
+  {"action":"set_max_det",   "value":300}
+  {"action":"set_agnostic_nms","value":false}
+  {"action":"set_retina_masks","value":false}
+  {"action":"set_topk",      "value":5}
+  {"action":"set_half",      "value":false}
+  {"action":"set_imgsz",     "value":640}
   {"action":"get_stats"}
 """
 
@@ -56,8 +76,10 @@ STREAMING_HTTP = os.environ.get("STREAMING_HTTP",  "http://127.0.0.1:8080")
 AI_PORT        = int(os.environ.get("AI_PORT", 8181))
 
 AVAILABLE_MODELS: dict[str, str] = {
-     "yolo26s":  "yolo26s.pt",
+    "yolo26s": "yolo26s.pt",
 }
+
+VALID_TASKS = {"detect", "segment", "pose", "obb", "track", "classify"}
 
 # ── YOLO availability ─────────────────────────────────────────────────────────
 YOLO_AVAILABLE = False
@@ -70,6 +92,33 @@ except ImportError:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Inference settings (global, shared across all cameras)
+# ═══════════════════════════════════════════════════════════════════════════════
+class InferenceConfig:
+    def __init__(self):
+        self.task          = "detect"       # detect | segment | pose | obb | track | classify
+        self.tracker       = "bytetrack"    # bytetrack | botsort
+        self.max_det       = 300
+        self.agnostic_nms  = False
+        self.retina_masks  = False          # segment only
+        self.topk          = 5              # classify only
+        self.half          = False          # fp16 inference
+        self.imgsz         = 640
+
+    def to_dict(self) -> dict:
+        return {
+            "task":         self.task,
+            "tracker":      self.tracker,
+            "max_det":      self.max_det,
+            "agnostic_nms": self.agnostic_nms,
+            "retina_masks": self.retina_masks,
+            "topk":         self.topk,
+            "half":         self.half,
+            "imgsz":        self.imgsz,
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Model Manager
 # ═══════════════════════════════════════════════════════════════════════════════
 class ModelManager:
@@ -78,7 +127,6 @@ class ModelManager:
         self.model_name = "none"
         self.loading    = False
         self._executor  = ThreadPoolExecutor(max_workers=1, thread_name_prefix="yolo-load")
-        self._inf_lock  = asyncio.Lock()   # serialize inference calls
 
     async def load(self, name: str) -> bool:
         if not YOLO_AVAILABLE:
@@ -112,7 +160,10 @@ class CamAIState:
         self.busy       = False
         self.conf       = 0.40
         self.iou        = 0.45
-        self.classes    = None       # None = all COCO classes
+        self.classes    = None       # None = all classes
+
+        # tracking state: keep tracker per camera
+        self._tracker_results = None
 
         self.last_dets  = []
         self.last_ms    = 0.0
@@ -150,29 +201,167 @@ class CamAIState:
 # Sync inference  (runs inside ThreadPoolExecutor)
 # ═══════════════════════════════════════════════════════════════════════════════
 def _run_inference(model, jpeg_bytes: bytes, conf: float, iou: float,
-                   classes) -> tuple[list, float]:
-    """Decode JPEG, run YOLO, return (detections, inference_ms).
-    Does NOT draw on the frame – annotation is done client-side for low latency.
+                   classes, cfg: InferenceConfig,
+                   cam_state: CamAIState) -> tuple[str, dict, float]:
+    """Decode JPEG, run YOLO26s in the selected task mode.
+    Returns (result_type, result_payload, inference_ms).
     """
     arr   = np.frombuffer(jpeg_bytes, np.uint8)
     frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if frame is None:
-        return [], 0.0
+        return "error", {}, 0.0
 
     h, w = frame.shape[:2]
+    task = cfg.task
     t0   = time.perf_counter()
-    results = model.predict(
-        frame,
+
+    common_kw = dict(
         conf=conf,
         iou=iou,
         classes=classes,
         verbose=False,
-        stream=False,
+        half=cfg.half,
+        imgsz=cfg.imgsz,
+        max_det=cfg.max_det,
+        agnostic_nms=cfg.agnostic_nms,
     )
-    ms = (time.perf_counter() - t0) * 1000.0
 
+    # ── CLASSIFY ────────────────────────────────────────────────────────────
+    if task == "classify":
+        results = model.predict(frame, verbose=False, half=cfg.half, imgsz=cfg.imgsz)
+        ms = (time.perf_counter() - t0) * 1000.0
+        payload = {"classifications": []}
+        for r in results:
+            if r.probs is not None:
+                top_ids   = r.probs.top5
+                top_confs = r.probs.top5conf.tolist()
+                names     = r.names
+                for cls_id, conf_v in zip(top_ids, top_confs):
+                    payload["classifications"].append({
+                        "class_id":   int(cls_id),
+                        "label":      names.get(int(cls_id), f"cls-{cls_id}"),
+                        "confidence": round(float(conf_v), 4),
+                    })
+                payload["classifications"] = payload["classifications"][:cfg.topk]
+        return "classification", payload, ms
+
+    # ── TRACK ───────────────────────────────────────────────────────────────
+    if task == "track":
+        results = model.track(
+            frame,
+            persist=True,
+            tracker=f"{cfg.tracker}.yaml",
+            **common_kw,
+        )
+        ms = (time.perf_counter() - t0) * 1000.0
+        tracks = []
+        for r in results:
+            if r.boxes is None:
+                continue
+            for box in r.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                track_id = int(box.id[0]) if box.id is not None else -1
+                tracks.append({
+                    "track_id":   track_id,
+                    "label":      r.names[int(box.cls[0])],
+                    "confidence": round(float(box.conf[0]), 3),
+                    "class_id":   int(box.cls[0]),
+                    "box":        [x1, y1, x2, y2],
+                    "frame_w":    w,
+                    "frame_h":    h,
+                })
+        return "tracks", {"tracks": tracks}, ms
+
+    # ── POSE ────────────────────────────────────────────────────────────────
+    if task == "pose":
+        results = model.predict(frame, **common_kw)
+        ms = (time.perf_counter() - t0) * 1000.0
+        poses = []
+        for r in results:
+            if r.boxes is None:
+                continue
+            kps_data = r.keypoints  # may be None if model has no keypoints
+            for i, box in enumerate(r.boxes):
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                pose_entry = {
+                    "label":      r.names[int(box.cls[0])],
+                    "confidence": round(float(box.conf[0]), 3),
+                    "class_id":   int(box.cls[0]),
+                    "box":        [x1, y1, x2, y2],
+                    "frame_w":    w,
+                    "frame_h":    h,
+                    "keypoints":  [],
+                }
+                if kps_data is not None and i < len(kps_data.xy):
+                    xy   = kps_data.xy[i].tolist()
+                    conf = (kps_data.conf[i].tolist()
+                            if kps_data.conf is not None else [1.0]*len(xy))
+                    pose_entry["keypoints"] = [
+                        {"x": round(p[0], 1), "y": round(p[1], 1), "conf": round(c, 3)}
+                        for p, c in zip(xy, conf)
+                    ]
+                poses.append(pose_entry)
+        return "poses", {"poses": poses}, ms
+
+    # ── SEGMENT ─────────────────────────────────────────────────────────────
+    if task == "segment":
+        results = model.predict(frame, retina_masks=cfg.retina_masks, **common_kw)
+        ms = (time.perf_counter() - t0) * 1000.0
+        dets = []
+        for r in results:
+            if r.boxes is None:
+                continue
+            masks_xy = r.masks.xy if (r.masks is not None) else []
+            for i, box in enumerate(r.boxes):
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                entry = {
+                    "label":      r.names[int(box.cls[0])],
+                    "confidence": round(float(box.conf[0]), 3),
+                    "class_id":   int(box.cls[0]),
+                    "box":        [x1, y1, x2, y2],
+                    "frame_w":    w,
+                    "frame_h":    h,
+                    "mask":       [],
+                }
+                if i < len(masks_xy):
+                    # downsample polygon to max 64 points for bandwidth
+                    poly = masks_xy[i].tolist()
+                    step = max(1, len(poly) // 64)
+                    entry["mask"] = [[round(p[0], 1), round(p[1], 1)]
+                                     for p in poly[::step]]
+                dets.append(entry)
+        return "detections", {"detections": dets, "task": "segment"}, ms
+
+    # ── OBB ─────────────────────────────────────────────────────────────────
+    if task == "obb":
+        results = model.predict(frame, **common_kw)
+        ms = (time.perf_counter() - t0) * 1000.0
+        dets = []
+        for r in results:
+            if r.obb is None:
+                continue
+            for obb_box in r.obb:
+                # xywhr: center_x, center_y, w, h, rotation_rad
+                xywhr = obb_box.xywhr[0].tolist()
+                xyxyxyxy = obb_box.xyxyxyxy[0].tolist()  # 4 corner points
+                dets.append({
+                    "label":      r.names[int(obb_box.cls[0])],
+                    "confidence": round(float(obb_box.conf[0]), 3),
+                    "class_id":   int(obb_box.cls[0]),
+                    "xywhr":      [round(v, 2) for v in xywhr],
+                    "corners":    [[round(p[0], 1), round(p[1], 1)] for p in xyxyxyxy],
+                    "frame_w":    w,
+                    "frame_h":    h,
+                })
+        return "detections", {"detections": dets, "task": "obb"}, ms
+
+    # ── DETECT (default) ────────────────────────────────────────────────────
+    results = model.predict(frame, **common_kw)
+    ms = (time.perf_counter() - t0) * 1000.0
     dets = []
     for r in results:
+        if r.boxes is None:
+            continue
         for box in r.boxes:
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             dets.append({
@@ -183,7 +372,7 @@ def _run_inference(model, jpeg_bytes: bytes, conf: float, iou: float,
                 "frame_w":    w,
                 "frame_h":    h,
             })
-    return dets, ms
+    return "detections", {"detections": dets, "task": "detect"}, ms
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -192,6 +381,7 @@ def _run_inference(model, jpeg_bytes: bytes, conf: float, iou: float,
 class AIServer:
     def __init__(self):
         self.model_mgr      = ModelManager()
+        self.inf_cfg        = InferenceConfig()
         self.cam_states:    dict[int, CamAIState] = {}
         self.cameras_meta:  dict[int, dict]       = {}
         self.ws_clients:    set[web.WebSocketResponse] = set()
@@ -201,7 +391,6 @@ class AIServer:
 
     # ── Streaming server connection ───────────────────────────────────────────
     async def run_streaming_connector(self):
-        """Background task: maintain WS connection to streaming server."""
         while True:
             try:
                 log.info(f"Connecting → {STREAMING_WS}")
@@ -269,7 +458,6 @@ class AIServer:
             await self._broadcast_json(msg)
 
         elif t == "stats":
-            # Merge AI stats into camera stats before forwarding
             for cid_str, d in msg.get("cameras", {}).items():
                 cid = int(cid_str)
                 if cid in self.cam_states:
@@ -278,7 +466,6 @@ class AIServer:
                     d["ai_inf_ms"] = round(s.last_ms, 1)
                     d["ai_dets"]   = len(s.last_dets)
             await self._broadcast_json(msg)
-
         else:
             await self._broadcast_json(msg)
 
@@ -292,10 +479,8 @@ class AIServer:
         state.frames_in += 1
         state.tick_fps()
 
-        # ── Pass-through frame IMMEDIATELY (zero-latency display) ────────────
         await self._broadcast_frame(cam_id, jpeg)
 
-        # ── Async inference (non-blocking, drop if busy) ─────────────────────
         if (
             self.ai_on
             and self.model_mgr.model is not None
@@ -309,28 +494,32 @@ class AIServer:
 
     async def _infer_async(self, cam_id: int, jpeg: bytes, state: CamAIState):
         try:
-            model   = self.model_mgr.model
-            conf    = state.conf
-            iou     = state.iou
+            model = self.model_mgr.model
+            conf  = state.conf
+            iou   = state.iou
             classes = state.classes
-            loop    = asyncio.get_event_loop()
+            cfg   = self.inf_cfg
+            loop  = asyncio.get_event_loop()
 
-            dets, ms = await loop.run_in_executor(
+            result_type, payload, ms = await loop.run_in_executor(
                 self._executor,
-                lambda: _run_inference(model, jpeg, conf, iou, classes),
+                lambda: _run_inference(model, jpeg, conf, iou, classes, cfg, state),
             )
 
-            state.last_dets  = dets
+            state.last_dets  = payload.get("detections") or payload.get("tracks") or []
             state.last_ms    = ms
             state.frames_out += 1
 
-            await self._broadcast_json({
-                "type":       "detections",
-                "cam_id":     cam_id,
-                "detections": dets,
-                "inf_ms":     round(ms, 1),
-                "model":      self.model_mgr.model_name,
-            })
+            msg = {
+                "type":    result_type,
+                "cam_id":  cam_id,
+                "inf_ms":  round(ms, 1),
+                "model":   self.model_mgr.model_name,
+                "task":    cfg.task,
+            }
+            msg.update(payload)
+            await self._broadcast_json(msg)
+
         except Exception as e:
             log.error(f"Inference error cam {cam_id}: {e}")
         finally:
@@ -366,7 +555,6 @@ class AIServer:
         ws = web.WebSocketResponse(max_msg_size=0)
         await ws.prepare(request)
 
-        # Send current state immediately on connect
         await ws.send_str(json.dumps({
             "type":      "init",
             "streaming": (
@@ -377,6 +565,7 @@ class AIServer:
             "ai_on":     self.ai_on,
             "cameras":   self.cameras_meta,
             "yolo_ok":   YOLO_AVAILABLE,
+            "inf_cfg":   self.inf_cfg.to_dict(),
         }))
 
         self.ws_clients.add(ws)
@@ -404,9 +593,9 @@ class AIServer:
         action = msg.get("action", "")
 
         if action == "load_model":
-            name = msg.get("model", "yolov8n")
+            name = msg.get("model", "yolo26s")
             await self._broadcast_json({"type": "model_loading", "model": name})
-            ok   = await self.model_mgr.load(name)
+            ok = await self.model_mgr.load(name)
             await self._broadcast_json({
                 "type":    "model_loaded",
                 "model":   self.model_mgr.model_name,
@@ -417,6 +606,13 @@ class AIServer:
             self.model_mgr.model      = None
             self.model_mgr.model_name = "none"
             await self._broadcast_json({"type": "model_loaded", "model": "none", "success": True})
+
+        elif action == "set_task":
+            task = msg.get("task", "detect")
+            if task in VALID_TASKS:
+                self.inf_cfg.task = task
+                log.info(f"Task → {task}")
+                await self._broadcast_json({"type": "task_changed", "task": task})
 
         elif action == "set_ai":
             self.ai_on = bool(msg.get("enabled", True))
@@ -443,7 +639,7 @@ class AIServer:
                 s.iou = val
 
         elif action == "set_classes":
-            cls_list = msg.get("classes")   # None → all, list[int] → filter
+            cls_list = msg.get("classes")
             cid = msg.get("cam_id")
             targets = (
                 [self.cam_states[cid]] if cid in self.cam_states
@@ -452,12 +648,40 @@ class AIServer:
             for s in targets:
                 s.classes = cls_list
 
+        elif action == "set_tracker":
+            tracker = msg.get("tracker", "bytetrack")
+            if tracker in ("bytetrack", "botsort"):
+                self.inf_cfg.tracker = tracker
+
+        elif action == "set_max_det":
+            self.inf_cfg.max_det = int(msg.get("value", 300))
+
+        elif action == "set_agnostic_nms":
+            self.inf_cfg.agnostic_nms = bool(msg.get("value", False))
+
+        elif action == "set_retina_masks":
+            self.inf_cfg.retina_masks = bool(msg.get("value", False))
+
+        elif action == "set_topk":
+            self.inf_cfg.topk = int(msg.get("value", 5))
+
+        elif action == "set_half":
+            self.inf_cfg.half = bool(msg.get("value", False))
+
+        elif action == "set_imgsz":
+            v = int(msg.get("value", 640))
+            if v in (320, 416, 480, 512, 608, 640, 768, 1024, 1280):
+                self.inf_cfg.imgsz = v
+
         elif action == "get_stats":
             stats = {str(cid): s.to_dict() for cid, s in self.cam_states.items()}
-            await ws.send_str(json.dumps({"type": "ai_stats", "cameras": stats}))
+            await ws.send_str(json.dumps({
+                "type":    "ai_stats",
+                "cameras": stats,
+                "inf_cfg": self.inf_cfg.to_dict(),
+            }))
 
     async def handle_api_cameras(self, request: web.Request) -> web.Response:
-        """Proxy streaming server /api/stats so the dashboard can list cameras."""
         try:
             async with aiohttp.ClientSession() as sess:
                 async with sess.get(
@@ -477,8 +701,12 @@ class AIServer:
 
     async def handle_api_ai_stats(self, request: web.Request) -> web.Response:
         return web.json_response({
-            str(cid): s.to_dict() for cid, s in self.cam_states.items()
+            "cameras": {str(cid): s.to_dict() for cid, s in self.cam_states.items()},
+            "inf_cfg": self.inf_cfg.to_dict(),
         })
+
+    async def handle_api_inf_cfg(self, request: web.Request) -> web.Response:
+        return web.json_response(self.inf_cfg.to_dict())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -493,6 +721,7 @@ async def main():
     app.router.add_get("/api/cameras",    server.handle_api_cameras)
     app.router.add_get("/api/models",     server.handle_api_models)
     app.router.add_get("/api/ai_stats",   server.handle_api_ai_stats)
+    app.router.add_get("/api/inf_cfg",    server.handle_api_inf_cfg)
 
     runner = web.AppRunner(app)
     await runner.setup()

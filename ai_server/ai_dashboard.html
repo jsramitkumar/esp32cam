@@ -3,66 +3,65 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ESP32-CAM AI Detection</title>
+<title>YOLO26s AI Dashboard</title>
 <style>
-/* ── Reset ──────────────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#070a0f;color:#d1d5db}
 button{cursor:pointer;border:none;background:none;font:inherit;color:inherit}
 input[type=range]{cursor:pointer}select{cursor:pointer}
 
-/* ── Variables ───────────────────────────────────────────── */
 :root{
-  --bg0:#070a0f; --bg1:#0d1117; --bg2:#141b24; --bg3:#1c2535;
+  --bg0:#070a0f;--bg1:#0d1117;--bg2:#141b24;--bg3:#1c2535;
   --border:#202840;
-  --accent:#6366f1; --accent2:#818cf8;
-  --live:#22c55e; --warn:#f59e0b; --danger:#ef4444;
-  --text1:#f0f4ff; --text2:#94a3b8; --text3:#4b5563;
-  --sidebar:260px; --topbar:50px; --detpanel:280px;
+  --accent:#6366f1;--accent2:#818cf8;
+  --live:#22c55e;--warn:#f59e0b;--danger:#ef4444;
+  --text1:#f0f4ff;--text2:#94a3b8;--text3:#4b5563;
+  --sidebar:268px;--topbar:50px;--detpanel:290px;
+  /* task colors */
+  --task-detect:#6366f1;--task-segment:#10b981;--task-pose:#f59e0b;
+  --task-obb:#ef4444;--task-track:#3b82f6;--task-classify:#a855f7;
 }
 
-/* ── Layout ──────────────────────────────────────────────── */
+/* ── Layout ─────────────────────────────────────────────────── */
 #app{display:flex;flex-direction:column;height:100vh}
 
 /* Topbar */
 #topbar{
   height:var(--topbar);flex-shrink:0;
-  display:flex;align-items:center;gap:10px;padding:0 14px;
+  display:flex;align-items:center;gap:8px;padding:0 12px;
   background:var(--bg1);border-bottom:1px solid var(--border);z-index:20;
 }
-.logo{
-  display:flex;align-items:center;gap:8px;
-  font-size:13px;font-weight:700;letter-spacing:.4px;color:var(--text1);
-  white-space:nowrap;user-select:none;
-}
+.logo{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;
+  letter-spacing:.4px;color:var(--text1);white-space:nowrap;user-select:none}
 .logo svg{color:var(--accent)}
-.logo .sub{font-size:10px;font-weight:400;color:var(--accent2);letter-spacing:.8px}
+.logo .sub{font-size:9px;font-weight:400;color:var(--accent2);letter-spacing:.8px}
 .spacer{flex:1}
 .tbadge{
   display:inline-flex;align-items:center;gap:5px;
-  padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.4px;
+  padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.4px;
 }
 #streamBadge{background:#060d1a;color:var(--text3);border:1px solid var(--border)}
 #streamBadge.on{background:#052e16;color:var(--live);border-color:#14532d}
 #streamBadge .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
 #aiBadge{background:#1a0d2e;color:#9333ea;border:1px solid #3b0764}
-#aiBadge.on{background:#1a0d2e;color:#a855f7}
-#modelBadge{
-  padding:3px 9px;border-radius:5px;font-size:11px;font-weight:600;
+#aiBadge.on{color:#a855f7}
+#modelBadge{padding:3px 9px;border-radius:5px;font-size:11px;font-weight:600;
   background:var(--bg3);border:1px solid var(--border);color:var(--text2);
-  max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
+  max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#taskBadge{padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;
+  background:var(--bg3);border:1px solid var(--border);color:var(--text2);
+  letter-spacing:.3px}
 .tbtn{
   display:inline-flex;align-items:center;gap:5px;
-  padding:5px 11px;border-radius:6px;font-size:12px;font-weight:600;
+  padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;
   background:var(--bg3);border:1px solid var(--border);color:var(--text2);
-  transition:background .15s,color .15s;line-height:1;
+  transition:background .15s,color .15s;line-height:1;white-space:nowrap;
 }
 .tbtn:hover{background:var(--bg2);color:var(--text1)}
 .tbtn.active{background:var(--accent);border-color:var(--accent);color:#fff}
 .tbtn.danger{background:#3f0a0a;border-color:#7f1d1d;color:#fca5a5}
 
-/* ── Body row ─────────────────────────────────────────────── */
+/* ── Body row ──────────────────────────────────────────────── */
 #body{display:flex;flex:1;overflow:hidden}
 
 /* ── Left sidebar ─────────────────────────────────────────── */
@@ -71,10 +70,10 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
   display:flex;flex-direction:column;
   background:var(--bg1);border-right:1px solid var(--border);overflow:hidden;
 }
-#camList{flex-shrink:0;overflow-y:auto;max-height:240px}
+#camList{flex-shrink:0;overflow-y:auto;max-height:220px}
 .cam-card{
-  display:flex;align-items:center;gap:10px;
-  padding:9px 12px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;
+  padding:8px 12px;border-bottom:1px solid var(--border);
   cursor:pointer;transition:background .12s;
 }
 .cam-card:hover{background:var(--bg2)}
@@ -86,22 +85,27 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
 .cam-sub{font-size:10px;color:var(--text2)}
 .cam-fps{font-size:10px;font-weight:700;color:var(--text2)}
 
-/* Sidebar scroll panels */
 #sideScroll{flex:1;overflow-y:auto;overflow-x:hidden}
-.sb-section{padding:10px 12px;border-bottom:1px solid var(--border)}
+.sb-section{padding:9px 12px;border-bottom:1px solid var(--border)}
 .sb-title{font-size:10px;font-weight:700;color:var(--text3);
-  letter-spacing:.7px;text-transform:uppercase;margin-bottom:8px;
+  letter-spacing:.7px;text-transform:uppercase;margin-bottom:7px;
   display:flex;align-items:center;gap:5px}
-.sb-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
-.sb-row label{font-size:11px;color:var(--text2);width:72px;flex-shrink:0}
+.sb-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.sb-row label{font-size:11px;color:var(--text2);width:80px;flex-shrink:0}
 .sb-row input[type=range]{flex:1;accent-color:var(--accent)}
-.sb-row .val{font-size:10px;color:var(--text3);width:30px;text-align:right}
+.sb-row .val{font-size:10px;color:var(--text3);width:32px;text-align:right}
 .sb-row select{
   flex:1;background:var(--bg3);border:1px solid var(--border);
   color:var(--text1);padding:3px 6px;border-radius:5px;font-size:11px;
 }
+.sb-row input[type=number]{
+  width:56px;background:var(--bg3);border:1px solid var(--border);
+  color:var(--text1);padding:3px 5px;border-radius:5px;font-size:11px;text-align:center;
+}
+.sb-row input[type=checkbox]{accent-color:var(--accent);width:13px;height:13px;cursor:pointer}
+.sb-row .cb-label{font-size:11px;color:var(--text2);cursor:pointer;user-select:none}
 .sb-fullbtn{
-  width:100%;padding:7px 10px;border-radius:6px;font-size:11px;font-weight:600;
+  width:100%;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;
   display:flex;align-items:center;justify-content:center;gap:6px;line-height:1;
   border:1px solid var(--border);background:var(--bg3);color:var(--text1);
   transition:background .15s;margin-top:4px;
@@ -116,10 +120,25 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
 .sb-loader.show{display:block}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* Class filter checklist */
+/* Task buttons grid */
+.task-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-top:2px}
+.task-btn{
+  padding:5px 4px;border-radius:5px;font-size:10px;font-weight:700;text-align:center;
+  border:1px solid var(--border);background:var(--bg3);color:var(--text2);
+  transition:all .15s;letter-spacing:.2px;
+}
+.task-btn:hover{border-color:var(--accent);color:var(--text1)}
+.task-btn.active-detect{background:rgba(99,102,241,.2);border-color:var(--task-detect);color:var(--task-detect)}
+.task-btn.active-segment{background:rgba(16,185,129,.2);border-color:var(--task-segment);color:var(--task-segment)}
+.task-btn.active-pose{background:rgba(245,158,11,.2);border-color:var(--task-pose);color:var(--task-pose)}
+.task-btn.active-obb{background:rgba(239,68,68,.2);border-color:var(--task-obb);color:var(--task-obb)}
+.task-btn.active-track{background:rgba(59,130,246,.2);border-color:var(--task-track);color:var(--task-track)}
+.task-btn.active-classify{background:rgba(168,85,247,.2);border-color:var(--task-classify);color:var(--task-classify)}
+
+/* class filter */
 .cls-grid{
   display:grid;grid-template-columns:1fr 1fr;gap:3px;
-  max-height:160px;overflow-y:auto;margin-top:4px;
+  max-height:140px;overflow-y:auto;margin-top:4px;
 }
 .cls-item{
   display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text2);
@@ -128,13 +147,13 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
 .cls-item input{accent-color:var(--accent);cursor:pointer;width:11px;height:11px}
 .cls-item:hover{color:var(--text1)}
 
-/* ── Main area ────────────────────────────────────────────── */
+/* hide sections by task */
+.task-section{display:none}
+.task-section.visible{display:block}
+
+/* ── Main area ─────────────────────────────────────────────── */
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg0);position:relative}
-#gridView{
-  flex:1;display:grid;overflow:hidden;
-  gap:3px;padding:3px;background:var(--bg0);
-  grid-template-columns:1fr;
-}
+#gridView{flex:1;display:grid;overflow:hidden;gap:3px;padding:3px;background:var(--bg0);grid-template-columns:1fr}
 #gridView.c2{grid-template-columns:1fr 1fr}
 #gridView.c3{grid-template-columns:1fr 1fr 1fr}
 #gridView.c4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
@@ -169,7 +188,6 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
 }
 .cell-btn:hover{background:var(--accent)}
 
-/* AI indicator chip on each cell */
 .ai-chip{
   position:absolute;top:7px;right:7px;
   display:flex;align-items:center;gap:4px;
@@ -180,12 +198,8 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
 .ai-chip.running{background:rgba(99,102,241,.28);color:#a5b4fc}
 .ai-chip svg{width:9px;height:9px}
 
-/* Bot tabs */
-#camTabs{
-  display:flex;gap:4px;padding:4px 6px;
-  background:var(--bg1);border-top:1px solid var(--border);
-  overflow-x:auto;flex-shrink:0;
-}
+/* Camera tabs */
+#camTabs{display:flex;gap:4px;padding:4px 6px;background:var(--bg1);border-top:1px solid var(--border);overflow-x:auto;flex-shrink:0}
 .cam-tab{
   display:flex;align-items:center;gap:5px;
   padding:4px 10px;border-radius:5px;font-size:11px;font-weight:600;
@@ -198,41 +212,33 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
 .cam-tab.focused-tab{border-color:var(--accent);color:var(--accent)}
 .td{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 
-/* ── Right detection panel ────────────────────────────────── */
+/* ── Right detection panel ─────────────────────────────────── */
 #detPanel{
   width:var(--detpanel);flex-shrink:0;
   display:flex;flex-direction:column;
   background:var(--bg1);border-left:1px solid var(--border);overflow:hidden;
 }
 .det-header{
-  padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0;
+  padding:9px 12px;border-bottom:1px solid var(--border);flex-shrink:0;
   display:flex;align-items:center;justify-content:space-between;
 }
-.det-header h2{font-size:11px;font-weight:700;color:var(--text2);
-  letter-spacing:.6px;text-transform:uppercase}
-.det-header .inf-badge{
-  font-size:10px;color:var(--text3);background:var(--bg3);
-  padding:2px 7px;border-radius:4px;font-variant-numeric:tabular-nums;
-}
-/* Stats bar */
-#aiStatsBar{
-  display:grid;grid-template-columns:1fr 1fr 1fr;
-  border-bottom:1px solid var(--border);flex-shrink:0;
-}
-.stat-box{
-  padding:8px 10px;border-right:1px solid var(--border);text-align:center;
-}
+.det-header h2{font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.6px;text-transform:uppercase}
+.det-header .inf-badge{font-size:10px;color:var(--text3);background:var(--bg3);padding:2px 7px;border-radius:4px;font-variant-numeric:tabular-nums}
+
+#aiStatsBar{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;border-bottom:1px solid var(--border);flex-shrink:0}
+.stat-box{padding:7px 8px;border-right:1px solid var(--border);text-align:center}
 .stat-box:last-child{border-right:none}
-.stat-val{font-size:17px;font-weight:700;color:var(--text1);font-variant-numeric:tabular-nums}
+.stat-val{font-size:15px;font-weight:700;color:var(--text1);font-variant-numeric:tabular-nums}
 .stat-lbl{font-size:9px;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;margin-top:1px}
 
-/* Detection list */
-#detList{flex:1;overflow-y:auto;padding:8px}
+/* Results panel — shared container */
+#resultsArea{flex:1;overflow-y:auto;padding:7px}
+
+/* detection items */
 .det-item{
   display:flex;align-items:center;gap:8px;
-  padding:6px 8px;border-radius:5px;margin-bottom:4px;
-  background:var(--bg2);border:1px solid var(--border);
-  transition:background .1s;
+  padding:5px 8px;border-radius:5px;margin-bottom:3px;
+  background:var(--bg2);border:1px solid var(--border);transition:background .1s;
 }
 .det-item:hover{background:var(--bg3)}
 .det-color{width:4px;height:28px;border-radius:2px;flex-shrink:0}
@@ -243,22 +249,51 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
 .det-conf-fill{height:100%;border-radius:2px;transition:width .2s}
 .det-box-info{font-size:9px;color:var(--text3);text-align:right;font-variant-numeric:tabular-nums}
 
-/* Event log */
-#eventLog{
-  flex-shrink:0;max-height:160px;overflow-y:auto;
-  border-top:1px solid var(--border);padding:6px 10px;
+/* track items */
+.track-item{
+  display:flex;align-items:center;gap:8px;
+  padding:5px 8px;border-radius:5px;margin-bottom:3px;
+  background:var(--bg2);border:1px solid var(--border);
 }
-.ev-title{font-size:10px;font-weight:700;color:var(--text3);
-  letter-spacing:.6px;text-transform:uppercase;margin-bottom:4px}
-.ev-item{
-  display:flex;gap:7px;align-items:baseline;
-  font-size:10px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04);
+.track-id-badge{
+  min-width:26px;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;
+  background:rgba(59,130,246,.25);border:1px solid rgba(59,130,246,.5);color:#93c5fd;
+  text-align:center;flex-shrink:0;
 }
-.ev-time{color:var(--text3);flex-shrink:0;font-variant-numeric:tabular-nums}
-.ev-text{color:var(--text2)}
-.ev-text span{color:var(--text1);font-weight:600}
+.track-body{flex:1;min-width:0}
+.track-label{font-size:11px;font-weight:600;color:var(--text1);text-transform:capitalize}
+.track-conf{font-size:10px;color:var(--text2)}
 
-/* No-detection empty state */
+/* classification items */
+.cls-result-item{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 8px;border-radius:5px;margin-bottom:3px;
+  background:var(--bg2);border:1px solid var(--border);
+}
+.cls-rank{font-size:11px;font-weight:700;color:var(--text3);width:16px;flex-shrink:0;text-align:center}
+.cls-body{flex:1;min-width:0}
+.cls-label-name{font-size:12px;font-weight:600;color:var(--text1);text-transform:capitalize}
+.cls-conf-row{display:flex;align-items:center;gap:6px;margin-top:3px}
+.cls-bar{flex:1;height:4px;border-radius:2px;background:var(--bg3)}
+.cls-bar-fill{height:100%;border-radius:2px;background:var(--task-classify)}
+.cls-pct{font-size:10px;color:var(--text3);width:32px;text-align:right;font-variant-numeric:tabular-nums}
+
+/* pose items */
+.pose-item{
+  padding:6px 8px;border-radius:5px;margin-bottom:4px;
+  background:var(--bg2);border:1px solid var(--border);
+}
+.pose-header{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.pose-label{font-size:11px;font-weight:600;color:var(--text1)}
+.pose-conf{font-size:10px;color:var(--text2)}
+.kp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+.kp-item{
+  font-size:9px;color:var(--text3);padding:2px 3px;border-radius:3px;
+  background:var(--bg3);font-variant-numeric:tabular-nums;
+}
+.kp-item.hi{color:var(--text2)}
+
+/* empty state */
 .det-empty{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;padding:24px;color:var(--text3);text-align:center;
@@ -266,16 +301,21 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
 .det-empty svg{opacity:.3}
 .det-empty p{font-size:11px;line-height:1.5}
 
-/* ── Scrollbars ───────────────────────────────────────────── */
+/* event log */
+#eventLog{flex-shrink:0;max-height:140px;overflow-y:auto;border-top:1px solid var(--border);padding:5px 10px}
+.ev-title{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.6px;text-transform:uppercase;margin-bottom:4px}
+.ev-item{display:flex;gap:7px;align-items:baseline;font-size:10px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.ev-time{color:var(--text3);flex-shrink:0;font-variant-numeric:tabular-nums}
+.ev-text{color:var(--text2)}
+.ev-text span{color:var(--text1);font-weight:600}
+
+/* ── Scrollbars ──────────────────────────────────────────── */
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
 
-/* ── Focus overlay ────────────────────────────────────────── */
-#focusOverlay{
-  display:none;position:absolute;inset:0;background:#000;
-  z-index:10;flex-direction:column;
-}
+/* ── Focus overlay ───────────────────────────────────────── */
+#focusOverlay{display:none;position:absolute;inset:0;background:#000;z-index:10;flex-direction:column}
 #focusOverlay.show{display:flex}
 #focusCanvas{width:100%;height:100%;object-fit:contain}
 #focusClose{
@@ -288,22 +328,20 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
 #focusClose:hover{background:rgba(255,255,255,.1)}
 
 /* ── Mobile ───────────────────────────────────────────────── */
-@media(max-width:900px){
-  #detPanel{display:none}
-}
+@media(max-width:1000px){#detPanel{display:none}}
 @media(max-width:640px){
-  :root{--sidebar:100vw;--detpanel:100vw}
+  :root{--sidebar:100vw}
   #sidebar{position:fixed;bottom:0;left:0;right:0;height:55vh;width:100vw;
     z-index:30;transform:translateY(100%);transition:transform .25s;
     border-radius:14px 14px 0 0;border-top:1px solid var(--border)}
   #sidebar.open{transform:translateY(0)}
 }
 
-/* ── Pulse animation for detection count ─────────────────── */
+/* Pulse */
 @keyframes det-pulse{0%,100%{opacity:1}50%{opacity:.55}}
 .det-pulse{animation:det-pulse .6s ease-in-out 2}
 
-/* ── Toast ───────────────────────────────────────────────── */
+/* Toast */
 #toast{
   position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);
   padding:8px 18px;border-radius:8px;font-size:12px;font-weight:600;
@@ -322,40 +360,33 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
 <!-- ══ TOPBAR ══════════════════════════════════════════════ -->
 <div id="topbar">
   <div class="logo">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
       <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
     </svg>
-    <span>ESP32-CAM<br><span class="sub">AI DETECTION</span></span>
+    <span>YOLO26s<br><span class="sub">AI DASHBOARD</span></span>
   </div>
 
   <div class="tbadge" id="streamBadge">
-    <span class="dot"></span>Streaming
+    <span class="dot"></span>Stream
   </div>
-
   <div class="tbadge" id="aiBadge">
-    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-      <circle cx="12" cy="12" r="9"/>
-    </svg>
-    AI
+    <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9"/></svg>AI
   </div>
-
   <div id="modelBadge">No Model</div>
+  <div id="taskBadge">DETECT</div>
 
   <div class="spacer"></div>
 
   <button class="tbtn active" id="aiToggleBtn" onclick="toggleAI()">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
       <path d="M18.36 6.64A9 9 0 1 1 5.64 6.64"/><line x1="12" y1="2" x2="12" y2="12"/>
-    </svg>
-    AI On
+    </svg>AI On
   </button>
-
   <button class="tbtn" onclick="showGrid()">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
       <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-    </svg>
-    Grid
+    </svg>Grid
   </button>
 </div>
 
@@ -364,39 +395,51 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
 
   <!-- ── Left Sidebar ── -->
   <div id="sidebar">
-
-    <!-- Camera list -->
-    <div id="camList"><!-- injected --></div>
+    <div id="camList"></div>
 
     <div id="sideScroll">
 
-      <!-- Model selector -->
+      <!-- ── Model ── -->
       <div class="sb-section">
         <div class="sb-title">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
           AI Model
         </div>
         <div class="sb-row">
           <label>Model</label>
-          <select id="modelSel">
-            <option value="yolo26s" selected>YOLO26s</option>
-          </select>
+          <select id="modelSel"><option value="yolo26s" selected>YOLO26s</option></select>
         </div>
         <button class="sb-fullbtn" id="loadBtn" onclick="loadModel()">
           <div class="sb-loader" id="loadSpinner"></div>
-          <svg id="loadIcon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Load Model
+          <svg id="loadIcon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+           Load Model
         </button>
-        <button class="sb-fullbtn" id="unloadBtn" onclick="unloadModel()" style="margin-top:4px;color:var(--text3)">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          Unload
+        <button class="sb-fullbtn" onclick="unloadModel()" style="margin-top:3px;color:var(--text3)">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+           Unload
         </button>
       </div>
 
-      <!-- Inference settings -->
+      <!-- ── Task Mode ── -->
       <div class="sb-section">
         <div class="sb-title">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+          Task Mode
+        </div>
+        <div class="task-grid">
+          <button class="task-btn active-detect" id="task-detect"    onclick="setTask('detect')">Detect</button>
+          <button class="task-btn"              id="task-segment"   onclick="setTask('segment')">Segment</button>
+          <button class="task-btn"              id="task-pose"      onclick="setTask('pose')">Pose</button>
+          <button class="task-btn"              id="task-obb"       onclick="setTask('obb')">OBB</button>
+          <button class="task-btn"              id="task-track"     onclick="setTask('track')">Track</button>
+          <button class="task-btn"              id="task-classify"  onclick="setTask('classify')">Classify</button>
+        </div>
+      </div>
+
+      <!-- ── Inference settings ── -->
+      <div class="sb-section">
+        <div class="sb-title">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
           Inference
         </div>
         <div class="sb-row">
@@ -405,27 +448,87 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
             oninput="this.nextElementSibling.textContent=this.value+'%';onConfChange(+this.value/100)">
           <span class="val">40%</span>
         </div>
-        <div class="sb-row">
+        <!-- hide IOU for classify -->
+        <div class="sb-row" id="iouRow">
           <label>IoU Thresh</label>
           <input type="range" min="10" max="85" value="45" step="5" id="iouSlider"
             oninput="this.nextElementSibling.textContent=this.value+'%';onIouChange(+this.value/100)">
           <span class="val">45%</span>
         </div>
+        <div class="sb-row">
+          <label>Max Dets</label>
+          <input type="number" min="1" max="1000" value="300" id="maxDetInput"
+            onchange="wsSend({action:'set_max_det',value:+this.value})">
+        </div>
+        <div class="sb-row">
+          <label>Img Size</label>
+          <select id="imgszSel" onchange="wsSend({action:'set_imgsz',value:+this.value})">
+            <option value="320">320</option>
+            <option value="416">416</option>
+            <option value="480">480</option>
+            <option value="512">512</option>
+            <option value="608">608</option>
+            <option value="640" selected>640</option>
+            <option value="768">768</option>
+            <option value="1024">1024</option>
+            <option value="1280">1280</option>
+          </select>
+        </div>
+        <div class="sb-row">
+          <input type="checkbox" id="halfCb" onchange="wsSend({action:'set_half',value:this.checked})">
+          <label class="cb-label" for="halfCb">FP16 half precision</label>
+        </div>
+        <div class="sb-row">
+          <input type="checkbox" id="agnosticCb" onchange="wsSend({action:'set_agnostic_nms',value:this.checked})">
+          <label class="cb-label" for="agnosticCb">Agnostic NMS</label>
+        </div>
       </div>
 
-      <!-- Class filter -->
-      <div class="sb-section">
+      <!-- ── Track options (shown only in track mode) ── -->
+      <div class="sb-section task-section" id="sec-track">
+        <div class="sb-title">Tracking</div>
+        <div class="sb-row">
+          <label>Tracker</label>
+          <select id="trackerSel" onchange="wsSend({action:'set_tracker',tracker:this.value})">
+            <option value="bytetrack" selected>ByteTrack</option>
+            <option value="botsort">BoT-SORT</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- ── Segment options ── -->
+      <div class="sb-section task-section" id="sec-segment">
+        <div class="sb-title">Segmentation</div>
+        <div class="sb-row">
+          <input type="checkbox" id="retinaCb" onchange="wsSend({action:'set_retina_masks',value:this.checked})">
+          <label class="cb-label" for="retinaCb">Retina Masks (high-res)</label>
+        </div>
+      </div>
+
+      <!-- ── Classify options ── -->
+      <div class="sb-section task-section" id="sec-classify">
+        <div class="sb-title">Classification</div>
+        <div class="sb-row">
+          <label>Top-K</label>
+          <input type="range" min="1" max="10" value="5" step="1" id="topkSlider"
+            oninput="this.nextElementSibling.textContent=this.value;wsSend({action:'set_topk',value:+this.value})">
+          <span class="val">5</span>
+        </div>
+      </div>
+
+      <!-- ── Class filter (not for classify/pose) ── -->
+      <div class="sb-section" id="sec-classfilter">
         <div class="sb-title">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
           Class Filter
         </div>
-        <div class="sb-row" style="margin-bottom:4px">
-          <label style="width:auto;flex:1;font-size:10px;color:var(--text3)">Select classes to detect</label>
+        <div class="sb-row" style="margin-bottom:3px">
+          <label style="width:auto;flex:1;font-size:10px;color:var(--text3)">Filter classes</label>
           <button style="font-size:10px;color:var(--accent);background:none;border:none;cursor:pointer" onclick="toggleAllClasses(true)">All</button>
           <span style="color:var(--text3);font-size:10px;padding:0 3px">/</span>
           <button style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer" onclick="toggleAllClasses(false)">None</button>
         </div>
-        <div class="cls-grid" id="clsGrid"><!-- injected --></div>
+        <div class="cls-grid" id="clsGrid"></div>
       </div>
 
     </div><!-- /sideScroll -->
@@ -433,52 +536,41 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
 
   <!-- ── Main area ── -->
   <div id="main">
-    <div id="gridView"><!-- cells injected --></div>
+    <div id="gridView"></div>
     <div id="focusOverlay">
       <canvas id="focusCanvas"></canvas>
       <button id="focusClose" onclick="showGrid()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         Close
       </button>
     </div>
-    <div id="camTabs"><!-- injected --></div>
+    <div id="camTabs"></div>
   </div>
 
-  <!-- ── Right: Detection panel ── -->
+  <!-- ── Right panel ── -->
   <div id="detPanel">
     <div class="det-header">
-      <h2>Detections</h2>
+      <h2 id="panelTitle">Detections</h2>
       <span class="inf-badge" id="infBadge">— ms</span>
     </div>
-
     <div id="aiStatsBar">
-      <div class="stat-box">
-        <div class="stat-val" id="statFps">—</div>
-        <div class="stat-lbl">AI FPS</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-val" id="statDets">0</div>
-        <div class="stat-lbl">Objects</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-val" id="statDropped">0</div>
-        <div class="stat-lbl">Dropped</div>
-      </div>
+      <div class="stat-box"><div class="stat-val" id="statFps">—</div><div class="stat-lbl">AI FPS</div></div>
+      <div class="stat-box"><div class="stat-val" id="statDets">0</div><div class="stat-lbl">Objects</div></div>
+      <div class="stat-box"><div class="stat-val" id="statDropped">0</div><div class="stat-lbl">Dropped</div></div>
+      <div class="stat-box"><div class="stat-val" id="statTask">DET</div><div class="stat-lbl">Task</div></div>
     </div>
-
-    <div id="detList">
+    <div id="resultsArea">
       <div class="det-empty" id="detEmpty">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           <line x1="8" y1="11" x2="14" y2="11" stroke-width="1"/><line x1="11" y1="8" x2="11" y2="14" stroke-width="1"/>
         </svg>
-        <p>No detections yet.<br>Load a model and start the stream.</p>
+        <p>No results yet.<br>Load a model and start the stream.</p>
       </div>
     </div>
-
     <div id="eventLog">
       <div class="ev-title">Event Log</div>
-      <div id="evItems"><!-- injected --></div>
+      <div id="evItems"></div>
     </div>
   </div>
 
@@ -488,7 +580,7 @@ input[type=range]{cursor:pointer}select{cursor:pointer}
 
 <script>
 // ════════════════════════════════════════════════════════════════
-// COCO 80 classes — common surveillance-relevant subset shown first
+// COCO 80 classes
 // ════════════════════════════════════════════════════════════════
 const COCO = {
   0:"person",1:"bicycle",2:"car",3:"motorcycle",4:"airplane",5:"bus",
@@ -509,30 +601,46 @@ const COCO = {
   76:"scissors",77:"teddy bear",78:"hair drier",79:"toothbrush"
 };
 
-// Deterministic color per class — vivid palette
+// COCO 17 pose keypoint names
+const KP_NAMES = [
+  "nose","left_eye","right_eye","left_ear","right_ear",
+  "left_shoulder","right_shoulder","left_elbow","right_elbow",
+  "left_wrist","right_wrist","left_hip","right_hip",
+  "left_knee","right_knee","left_ankle","right_ankle"
+];
+
+// Pose skeleton connections [from, to]
+const SKELETON = [
+  [0,1],[0,2],[1,3],[2,4],
+  [5,6],[5,7],[7,9],[6,8],[8,10],
+  [5,11],[6,12],[11,12],
+  [11,13],[13,15],[12,14],[14,16]
+];
+
 const COLORS = [
   "#6ee7b7","#fbbf24","#60a5fa","#f87171","#a78bfa","#34d399",
   "#fb923c","#38bdf8","#f472b6","#a3e635","#e879f9","#4ade80",
   "#2dd4bf","#facc15","#818cf8","#f9a8d4","#86efac","#fde68a",
   "#93c5fd","#fca5a5","#c4b5fd","#6ee7b7","#fdba74","#7dd3fc",
 ];
-function classColor(id){return COLORS[id%COLORS.length]}
-function hexToRgba(hex,a){
-  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+function classColor(id){ return COLORS[id % COLORS.length]; }
+function hexToRgba(hex, a){
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
   return `rgba(${r},${g},${b},${a})`;
 }
 
 // ════════════════════════════════════════════════════════════════
 // State
 // ════════════════════════════════════════════════════════════════
-const cameras   = {};   // cam_id → CamState
-let focusId     = null;
-let selCamId    = null;
-let ws          = null;
-let reconn      = null;
-let aiOn        = true;
+const cameras    = {};
+let focusId      = null;
+let selCamId     = null;
+let ws           = null;
+let reconn       = null;
+let aiOn         = true;
 let currentModel = "none";
-let classFilter = null; // null = all, Set = active class IDs
+let currentTask  = "detect";
+let classFilter  = null;
 
 // ════════════════════════════════════════════════════════════════
 // Camera model
@@ -543,17 +651,22 @@ class CamState {
     this.connected = false;
     this.canvas = null; this.ctx = null;
     this.pending = null; this.rendering = false;
-    this.lastDets = [];        // latest detection results
-    this.lastInfMs = 0;
+    this.lastResult = null;   // last raw result payload
+    this.lastInfMs  = 0;
     this.aiFps = 0; this.aiDropped = 0;
     this._fpsN = 0; this._fpsT = performance.now(); this.localFps = 0;
   }
   upd(d){
-    if(d.name)        this.name = d.name;
-    if(d.ip)          this.ip   = d.ip;
-    if("connected" in d) this.connected = d.connected;
-    if("ai_fps" in d)    this.aiFps     = d.ai_fps;
-    if("ai_inf_ms" in d) this.lastInfMs = d.ai_inf_ms;
+    if(d.name) this.name = d.name;
+    if(d.ip)   this.ip   = d.ip;
+    if("connected"  in d) this.connected = d.connected;
+    if("ai_fps"     in d) this.aiFps     = d.ai_fps;
+    if("ai_inf_ms"  in d) this.lastInfMs = d.ai_inf_ms;
+  }
+  get resultCount(){
+    if(!this.lastResult) return 0;
+    const r = this.lastResult;
+    return (r.detections||r.tracks||r.poses||r.classifications||[]).length;
   }
 }
 
@@ -571,7 +684,6 @@ function connect(){
     ? handleText(JSON.parse(e.data))
     : handleBinary(e.data);
 }
-
 function wsSend(obj){ if(ws && ws.readyState===1) ws.send(JSON.stringify(obj)); }
 
 // ════════════════════════════════════════════════════════════════
@@ -586,82 +698,91 @@ function handleText(msg){
     setModelBadge(msg.model || "none");
     aiOn = msg.ai_on ?? true;
     currentModel = msg.model || "none";
-    if(!msg.yolo_ok) toast("⚠ ultralytics not installed – run: pip install ultralytics", "err", 6000);
-    Object.values(msg.cameras || {}).forEach(d => ensureCam(+d.cam_id, d));
+    if(msg.inf_cfg) applyInfCfg(msg.inf_cfg);
+    if(!msg.yolo_ok) toast("⚠ ultralytics not installed – run: pip install ultralytics","err",6000);
+    Object.values(msg.cameras||{}).forEach(d => ensureCam(+d.cam_id, d));
   }
-
   else if(t === "cam_list"){
-    Object.values(msg.cameras || {}).forEach(d => ensureCam(+d.cam_id, d));
+    Object.values(msg.cameras||{}).forEach(d => ensureCam(+d.cam_id, d));
   }
-
   else if(t === "cam_joined" || t === "cam_status"){
-    ensureCam(+msg.cam_id, msg.data || {});
+    ensureCam(+msg.cam_id, msg.data||{});
   }
-
   else if(t === "cam_removed"){
     removeCam(+msg.cam_id);
   }
-
   else if(t === "stats"){
-    Object.entries(msg.cameras || {}).forEach(([cid, d]) => {
+    Object.entries(msg.cameras||{}).forEach(([cid, d]) => {
       const cam = cameras[+cid]; if(!cam) return;
-      cam.upd(d);
-      updateCard(cam);
+      cam.upd(d); updateCard(cam);
     });
   }
-
   else if(t === "detections"){
     const cam = cameras[+msg.cam_id]; if(!cam) return;
-    cam.lastDets   = msg.detections || [];
-    cam.lastInfMs  = msg.inf_ms || 0;
-    // Redraw canvas with detection overlay
-    if(cam.canvas) _drawDetectionOverlay(cam.ctx, cam.lastDets);
-    if(focusId === cam.id){
-      const fc = document.getElementById("focusCanvas");
-      if(fc) _drawDetectionOverlay(fc.getContext("2d"), cam.lastDets);
-    }
-    // Update right panel if this is focused cam
+    cam.lastResult  = msg;
+    cam.lastInfMs   = msg.inf_ms || 0;
+    redrawCamOverlay(cam);
     if(focusId === cam.id || selCamId === cam.id) updateDetPanel(cam);
     updateAIChip(cam);
   }
-
+  else if(t === "poses"){
+    const cam = cameras[+msg.cam_id]; if(!cam) return;
+    cam.lastResult = msg;
+    cam.lastInfMs  = msg.inf_ms || 0;
+    redrawCamOverlay(cam);
+    if(focusId === cam.id || selCamId === cam.id) updateDetPanel(cam);
+    updateAIChip(cam);
+  }
+  else if(t === "tracks"){
+    const cam = cameras[+msg.cam_id]; if(!cam) return;
+    cam.lastResult = msg;
+    cam.lastInfMs  = msg.inf_ms || 0;
+    redrawCamOverlay(cam);
+    if(focusId === cam.id || selCamId === cam.id) updateDetPanel(cam);
+    updateAIChip(cam);
+  }
+  else if(t === "classification"){
+    const cam = cameras[+msg.cam_id]; if(!cam) return;
+    cam.lastResult = msg;
+    cam.lastInfMs  = msg.inf_ms || 0;
+    if(focusId === cam.id || selCamId === cam.id) updateDetPanel(cam);
+    updateAIChip(cam);
+  }
   else if(t === "server_status"){
     setStreamBadge(msg.streaming);
-    if(!msg.streaming) toast("Streaming server disconnected – reconnecting…", "err");
-    else toast("Streaming server connected", "ok");
+    if(!msg.streaming) toast("Streaming server disconnected – reconnecting…","err");
+    else toast("Streaming server connected","ok");
   }
-
   else if(t === "model_loading"){
     setLoadingState(true, msg.model);
     toast(`Loading ${msg.model}…`);
   }
-
   else if(t === "model_loaded"){
     setLoadingState(false);
     currentModel = msg.model;
     setModelBadge(msg.model);
-    if(msg.success) toast(`Model loaded: ${msg.model}`, "ok");
-    else toast(`Failed to load model`, "err");
+    if(msg.success) toast(`Model loaded: ${msg.model}`,"ok");
+    else toast("Failed to load model","err");
   }
-
   else if(t === "ai_status"){
     aiOn = msg.ai_on;
     setAIBadge(aiOn);
     const btn = document.getElementById("aiToggleBtn");
     btn.classList.toggle("active", aiOn);
-    btn.innerHTML = aiOn
-      ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18.36 6.64A9 9 0 1 1 5.64 6.64"/><line x1="12" y1="2" x2="12" y2="12"/></svg> AI On'
-      : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18.36 6.64A9 9 0 1 1 5.64 6.64"/><line x1="12" y1="2" x2="12" y2="12"/></svg> AI Off';
+    btn.childNodes[btn.childNodes.length-1].textContent = aiOn ? " AI On" : " AI Off";
   }
-
+  else if(t === "task_changed"){
+    applyTaskUI(msg.task);
+  }
   else if(t === "ai_stats"){
-    Object.entries(msg.cameras || {}).forEach(([cidStr, d]) => {
-      const cam = cameras[+cidStr]; if(!cam) return;
+    Object.entries(msg.cameras||{}).forEach(([cid, d]) => {
+      const cam = cameras[+cid]; if(!cam) return;
       cam.aiFps    = d.fps || 0;
       cam.lastInfMs = d.inf_ms || 0;
       cam.aiDropped = d.dropped || 0;
       updateCard(cam);
     });
+    if(msg.inf_cfg) applyInfCfg(msg.inf_cfg);
   }
 }
 
@@ -669,11 +790,8 @@ function handleText(msg){
 // Binary frame handling
 // ════════════════════════════════════════════════════════════════
 function handleBinary(buf){
-  const a = new Uint8Array(buf);
-  if(a.length < 3) return;
+  const a = new Uint8Array(buf); if(a.length < 3) return;
   const cam = cameras[a[0]]; if(!cam) return;
-
-  // Local FPS
   cam._fpsN++;
   const now = performance.now();
   if(now - cam._fpsT >= 1000){
@@ -700,23 +818,23 @@ function _draw(cam, url){
   img.onload = () => {
     _resizeCanvas(cam.canvas, img);
     cam.ctx.drawImage(img, 0, 0);
-    // Draw cached detections on top of fresh frame
-    if(cam.lastDets.length) _drawDetectionOverlay(cam.ctx, cam.lastDets);
+    _drawResultOverlay(cam.ctx, cam.lastResult);
     if(focusId === cam.id){
       const fc = document.getElementById("focusCanvas");
       _resizeCanvas(fc, img);
-      fc.getContext("2d").drawImage(img, 0, 0);
-      if(cam.lastDets.length) _drawDetectionOverlay(fc.getContext("2d"), cam.lastDets);
+      const fctx = fc.getContext("2d");
+      fctx.drawImage(img, 0, 0);
+      _drawResultOverlay(fctx, cam.lastResult);
     }
     document.getElementById(`ns-${cam.id}`)?.style.setProperty("display","none");
     URL.revokeObjectURL(url);
     cam.rendering = false;
-    if(cam.pending){const n=cam.pending;cam.pending=null;_draw(cam,n);}
+    if(cam.pending){ const n=cam.pending; cam.pending=null; _draw(cam,n); }
   };
   img.onerror = () => {
     URL.revokeObjectURL(url);
     cam.rendering = false;
-    if(cam.pending){const n=cam.pending;cam.pending=null;_draw(cam,n);}
+    if(cam.pending){ const n=cam.pending; cam.pending=null; _draw(cam,n); }
   };
   img.src = url;
 }
@@ -727,57 +845,207 @@ function _resizeCanvas(canvas, img){
   }
 }
 
+function redrawCamOverlay(cam){
+  if(!cam.canvas) return;
+  // Already drawn in _draw; for detection-only updates we just paint over:
+  if(!cam.rendering && cam.canvas.width > 1){
+    // Re-fetch last frame isn't possible, so we just update on next frame draw
+  }
+}
+
 // ════════════════════════════════════════════════════════════════
-// Detection overlay  (drawn on canvas)
+// Master overlay dispatcher
 // ════════════════════════════════════════════════════════════════
-function _drawDetectionOverlay(ctx, dets){
-  if(!dets || !dets.length) return;
+function _drawResultOverlay(ctx, result){
+  if(!result) return;
+  const task = result.task || currentTask;
+  if(task === "detect" || task === "segment") _drawDetections(ctx, result.detections||[], task);
+  else if(task === "obb")                     _drawOBBs(ctx, result.detections||[]);
+  else if(task === "track")                   _drawTracks(ctx, result.tracks||[]);
+  else if(task === "pose")                    _drawPoses(ctx, result.poses||[]);
+  // classify: no canvas overlay
+}
+
+// ── Detection / Segmentation overlay ────────────────────────────
+function _drawDetections(ctx, dets, task){
+  if(!dets.length) return;
   const cw = ctx.canvas.width, ch = ctx.canvas.height;
-  const fw = dets[0]?.frame_w || cw;
-  const fh = dets[0]?.frame_h || ch;
+  const fw = dets[0]?.frame_w || cw, fh = dets[0]?.frame_h || ch;
   const sx = cw/fw, sy = ch/fh;
   const sc = Math.min(cw/640, ch/480, 1.8);
-
   ctx.save();
   ctx.textBaseline = "middle";
 
+  // Draw masks first (behind boxes)
+  if(task === "segment"){
+    for(const d of dets){
+      if(!d.mask || d.mask.length < 3) continue;
+      const col = classColor(d.class_id);
+      ctx.fillStyle = hexToRgba(col, 0.22);
+      ctx.beginPath();
+      ctx.moveTo(d.mask[0][0]*sx, d.mask[0][1]*sy);
+      for(let i=1;i<d.mask.length;i++) ctx.lineTo(d.mask[i][0]*sx, d.mask[i][1]*sy);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = hexToRgba(col, 0.7);
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+  }
+
   for(const d of dets){
     const [x1,y1,x2,y2] = d.box;
-    const bx = x1*sx, by = y1*sy, bw = (x2-x1)*sx, bh = (y2-y1)*sy;
+    const bx=x1*sx, by=y1*sy, bw=(x2-x1)*sx, bh=(y2-y1)*sy;
     const col  = classColor(d.class_id);
     const pct  = Math.round(d.confidence*100);
-    const lbl  = `${d.label}  ${pct}%`;
+    const lbl  = `${d.label} ${pct}%`;
     const fs   = Math.max(9, Math.round(11*sc));
 
-    // Border glow
-    ctx.shadowColor = col;
-    ctx.shadowBlur  = 6;
-    ctx.strokeStyle = col;
-    ctx.lineWidth   = Math.max(1.5, 2*sc);
+    ctx.shadowColor = col; ctx.shadowBlur = 6;
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.5, 2*sc);
     ctx.strokeRect(bx, by, bw, bh);
-    ctx.shadowBlur  = 0;
+    ctx.shadowBlur = 0;
 
-    // Corner ticks (tactical style)
-    const tk = Math.min(bw, bh) * 0.18;
-    ctx.strokeStyle = col;
-    ctx.lineWidth   = Math.max(2, 2.5*sc);
-    // top-left
+    const tk = Math.min(bw, bh)*0.18;
+    ctx.lineWidth = Math.max(2, 2.5*sc);
     ctx.beginPath(); ctx.moveTo(bx,by+tk); ctx.lineTo(bx,by); ctx.lineTo(bx+tk,by); ctx.stroke();
-    // top-right
     ctx.beginPath(); ctx.moveTo(bx+bw-tk,by); ctx.lineTo(bx+bw,by); ctx.lineTo(bx+bw,by+tk); ctx.stroke();
-    // bottom-left
     ctx.beginPath(); ctx.moveTo(bx,by+bh-tk); ctx.lineTo(bx,by+bh); ctx.lineTo(bx+tk,by+bh); ctx.stroke();
-    // bottom-right
     ctx.beginPath(); ctx.moveTo(bx+bw-tk,by+bh); ctx.lineTo(bx+bw,by+bh); ctx.lineTo(bx+bw,by+bh-tk); ctx.stroke();
 
-    // Label pill
     ctx.font = `600 ${fs}px 'Segoe UI',system-ui,sans-serif`;
     const tw = ctx.measureText(lbl).width;
-    const ph = fs + 7, pw = tw + 10;
+    const ph = fs+7, pw = tw+10;
     ctx.fillStyle = hexToRgba(col, 0.88);
-    _rrect(ctx, bx, by - ph - 2, pw, ph, 3); ctx.fill();
+    _rrect(ctx, bx, by-ph-2, pw, ph, 3); ctx.fill();
     ctx.fillStyle = "#000";
-    ctx.fillText(lbl, bx + 5, by - ph/2 - 2);
+    ctx.fillText(lbl, bx+5, by-ph/2-2);
+  }
+  ctx.restore();
+}
+
+// ── OBB overlay ─────────────────────────────────────────────────
+function _drawOBBs(ctx, dets){
+  if(!dets.length) return;
+  const cw = ctx.canvas.width, ch = ctx.canvas.height;
+  const fw = dets[0]?.frame_w||cw, fh = dets[0]?.frame_h||ch;
+  const sx = cw/fw, sy = ch/fh;
+  const sc = Math.min(cw/640, ch/480, 1.8);
+  ctx.save();
+  ctx.textBaseline = "middle";
+  for(const d of dets){
+    const col = classColor(d.class_id);
+    const pct = Math.round(d.confidence*100);
+    const corners = d.corners;
+    if(!corners||corners.length<4) continue;
+    ctx.shadowColor = col; ctx.shadowBlur = 5;
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.5, 2*sc);
+    ctx.beginPath();
+    ctx.moveTo(corners[0][0]*sx, corners[0][1]*sy);
+    for(let i=1;i<corners.length;i++) ctx.lineTo(corners[i][0]*sx, corners[i][1]*sy);
+    ctx.closePath(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    const fs = Math.max(9, Math.round(11*sc));
+    ctx.font = `600 ${fs}px 'Segoe UI',system-ui,sans-serif`;
+    const lbl = `${d.label} ${pct}%`;
+    const tw = ctx.measureText(lbl).width;
+    const px = corners[0][0]*sx, py = corners[0][1]*sy;
+    ctx.fillStyle = hexToRgba(col, 0.88);
+    _rrect(ctx, px, py-fs-9, tw+10, fs+7, 3); ctx.fill();
+    ctx.fillStyle = "#000"; ctx.fillText(lbl, px+5, py-fs/2-9);
+  }
+  ctx.restore();
+}
+
+// ── Track overlay ────────────────────────────────────────────────
+function _drawTracks(ctx, tracks){
+  if(!tracks.length) return;
+  const cw = ctx.canvas.width, ch = ctx.canvas.height;
+  const fw = tracks[0]?.frame_w||cw, fh = tracks[0]?.frame_h||ch;
+  const sx = cw/fw, sy = ch/fh;
+  const sc = Math.min(cw/640, ch/480, 1.8);
+  ctx.save();
+  ctx.textBaseline = "middle";
+  for(const d of tracks){
+    const [x1,y1,x2,y2] = d.box;
+    const bx=x1*sx, by=y1*sy, bw=(x2-x1)*sx, bh=(y2-y1)*sy;
+    // Use track_id for color so same object keeps same color
+    const col = COLORS[(d.track_id >= 0 ? d.track_id : d.class_id) % COLORS.length];
+    const fs  = Math.max(9, Math.round(11*sc));
+    const pct = Math.round(d.confidence*100);
+    const lbl = `#${d.track_id} ${d.label} ${pct}%`;
+
+    ctx.shadowColor = col; ctx.shadowBlur = 6;
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, 2.5*sc);
+    ctx.strokeRect(bx, by, bw, bh);
+    ctx.shadowBlur = 0;
+
+    ctx.font = `700 ${fs}px 'Segoe UI',system-ui,sans-serif`;
+    const tw = ctx.measureText(lbl).width;
+    const ph = fs+7, pw = tw+10;
+    ctx.fillStyle = hexToRgba(col, 0.92);
+    _rrect(ctx, bx, by-ph-2, pw, ph, 3); ctx.fill();
+    ctx.fillStyle = "#000"; ctx.fillText(lbl, bx+5, by-ph/2-2);
+  }
+  ctx.restore();
+}
+
+// ── Pose overlay ─────────────────────────────────────────────────
+function _drawPoses(ctx, poses){
+  if(!poses.length) return;
+  const cw = ctx.canvas.width, ch = ctx.canvas.height;
+  const fw = poses[0]?.frame_w||cw, fh = poses[0]?.frame_h||ch;
+  const sx = cw/fw, sy = ch/fh;
+  const sc = Math.min(cw/640, ch/480, 1.8);
+  ctx.save();
+  ctx.textBaseline = "middle";
+  for(const p of poses){
+    const col = classColor(p.class_id);
+    const [x1,y1,x2,y2] = p.box;
+    const bx=x1*sx, by=y1*sy, bw=(x2-x1)*sx, bh=(y2-y1)*sy;
+
+    // Bounding box
+    ctx.shadowColor = col; ctx.shadowBlur = 4;
+    ctx.strokeStyle = hexToRgba(col, 0.5); ctx.lineWidth = 1.5;
+    ctx.setLineDash([4,3]);
+    ctx.strokeRect(bx,by,bw,bh);
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+
+    const kps = p.keypoints;
+    if(kps && kps.length){
+      // Skeleton
+      ctx.lineWidth = Math.max(1.5, 2*sc);
+      for(const [a,b] of SKELETON){
+        if(a >= kps.length || b >= kps.length) continue;
+        const ka = kps[a], kb = kps[b];
+        if(ka.conf < 0.3 || kb.conf < 0.3) continue;
+        ctx.strokeStyle = hexToRgba(col, 0.7);
+        ctx.beginPath();
+        ctx.moveTo(ka.x*sx, ka.y*sy);
+        ctx.lineTo(kb.x*sx, kb.y*sy);
+        ctx.stroke();
+      }
+      // Keypoints
+      for(const kp of kps){
+        if(kp.conf < 0.3) continue;
+        const r = Math.max(3, 4*sc);
+        ctx.fillStyle = kp.conf > 0.7 ? col : hexToRgba(col, 0.5);
+        ctx.shadowColor = col; ctx.shadowBlur = 4;
+        ctx.beginPath(); ctx.arc(kp.x*sx, kp.y*sy, r, 0, Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    // Label
+    const fs = Math.max(9, Math.round(11*sc));
+    const pct = Math.round(p.confidence*100);
+    const lbl = `${p.label} ${pct}%`;
+    ctx.font = `600 ${fs}px 'Segoe UI',system-ui,sans-serif`;
+    const tw = ctx.measureText(lbl).width;
+    const ph = fs+7, pw = tw+10;
+    ctx.fillStyle = hexToRgba(col, 0.88);
+    _rrect(ctx, bx, by-ph-2, pw, ph, 3); ctx.fill();
+    ctx.fillStyle = "#000"; ctx.fillText(lbl, bx+5, by-ph/2-2);
   }
   ctx.restore();
 }
@@ -797,7 +1065,7 @@ function ensureCam(id, data){
   if(isNew){ buildCell(cam); buildTab(cam); addCard(cam); }
   updateCard(cam);
   if(selCamId === null) selCamId = id;
-  if(focusId === null)  focusId  = id;
+  if(focusId  === null) focusId  = id;
   reflow(); recount();
 }
 
@@ -807,7 +1075,7 @@ function removeCam(id){
   document.getElementById(`tab-${id}`)?.remove();
   document.getElementById(`scard-${id}`)?.remove();
   delete cameras[id];
-  if(focusId===id) showGrid();
+  if(focusId===id)  showGrid();
   if(selCamId===id) selCamId = +Object.keys(cameras)[0] ?? null;
   reflow(); recount();
 }
@@ -816,37 +1084,26 @@ function buildCell(cam){
   const cell = document.createElement("div");
   cell.className = "cam-cell"; cell.id = `cell-${cam.id}`;
   cell.onclick = () => focusCam(cam.id);
-
   const cv = document.createElement("canvas");
   cv.id = `cv-${cam.id}`; cv.width = 640; cv.height = 480;
   cell.appendChild(cv);
-
-  // No-signal
   const ns = document.createElement("div");
   ns.className = "no-sig"; ns.id = `ns-${cam.id}`;
   ns.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
     <rect x="2" y="3" width="20" height="14" rx="2"/>
     <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-    <line x1="2" y1="3" x2="22" y2="17" stroke-width="2"/>
-  </svg><p>${cam.name}</p>`;
+    <line x1="2" y1="3" x2="22" y2="17" stroke-width="2"/></svg>
+    <p>${cam.name}</p>`;
   cell.appendChild(ns);
-
-  // AI chip
   const chip = document.createElement("div");
   chip.className = "ai-chip"; chip.id = `chip-${cam.id}`;
   chip.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> AI`;
   cell.appendChild(chip);
-
-  // Hover overlay
-  const ov = document.createElement("div");
-  ov.className = "cell-overlay";
-  const btnFocus = document.createElement("button");
-  btnFocus.className = "cell-btn";
-  btnFocus.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg> Focus';
-  btnFocus.onclick = e => { e.stopPropagation(); focusCam(cam.id); };
-  ov.appendChild(btnFocus);
-  cell.appendChild(ov);
-
+  const ov = document.createElement("div"); ov.className = "cell-overlay";
+  const btnF = document.createElement("button"); btnF.className = "cell-btn";
+  btnF.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg> Focus';
+  btnF.onclick = e => { e.stopPropagation(); focusCam(cam.id); };
+  ov.appendChild(btnF); cell.appendChild(ov);
   document.getElementById("gridView").appendChild(cell);
   cam.canvas = cv; cam.ctx = cv.getContext("2d");
 }
@@ -867,7 +1124,7 @@ function addCard(cam){
     <div class="cam-dot" id="sdot-${cam.id}"></div>
     <div class="cam-info">
       <div class="cam-name" id="sname-${cam.id}">${cam.name}</div>
-      <div class="cam-sub"  id="ssub-${cam.id}"> ${cam.ip||"—"}</div>
+      <div class="cam-sub"  id="ssub-${cam.id}">${cam.ip||"—"}</div>
     </div>
     <div class="cam-fps" id="sfps-${cam.id}">—</div>`;
   document.getElementById("camList").appendChild(c);
@@ -879,20 +1136,21 @@ function updateCard(cam){
   const sub  = document.getElementById(`ssub-${cam.id}`);
   const fps  = document.getElementById(`sfps-${cam.id}`);
   const tab  = document.getElementById(`tab-${cam.id}`);
-  if(dot)  dot.className   = "cam-dot" + (cam.connected ? " live" : "");
+  if(dot)  dot.className    = "cam-dot" + (cam.connected ? " live" : "");
   if(name) name.textContent = cam.name;
   if(sub)  sub.textContent  = cam.ip || "—";
   if(fps)  fps.textContent  = cam.connected
-    ? `${cam.localFps || 0}fps  ${cam.aiFps||0}ai`
+    ? `${cam.localFps||0}fps ${cam.aiFps||0}ai`
     : "offline";
-  if(tab){ tab.className = "cam-tab " + (cam.connected?"live":"offline"); }
+  if(tab)  tab.className    = "cam-tab " + (cam.connected?"live":"offline");
 }
 
 function updateAIChip(cam){
   const chip = document.getElementById(`chip-${cam.id}`); if(!chip) return;
-  if(cam.lastDets.length){
+  const count = cam.resultCount;
+  if(count){
     chip.classList.add("running");
-    chip.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> ${cam.lastDets.length}`;
+    chip.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> ${count}`;
   } else {
     chip.classList.remove("running");
     chip.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> AI`;
@@ -908,52 +1166,77 @@ function reflow(){
   else if(n===4) gv.classList.add("c4");
   else if(n>=5)  gv.classList.add("c5plus");
 }
-
-function recount(){
-  const live = Object.values(cameras).filter(c=>c.connected).length;
-  // Badge is in topbar streamBadge handled separately
-}
+function recount(){}
 
 // ════════════════════════════════════════════════════════════════
-// Detection panel
+// Detection / Results panel
 // ════════════════════════════════════════════════════════════════
-let _prevDetCount = 0;
+let _prevCount = 0;
 
 function updateDetPanel(cam){
-  const dets = cam.lastDets || [];
+  if(!cam.lastResult){ return; }
+  const result = cam.lastResult;
+  const task   = result.task || currentTask;
 
-  // Stats bar
   document.getElementById("infBadge").textContent   = `${cam.lastInfMs.toFixed(1)} ms`;
-  document.getElementById("statFps").textContent     = cam.aiFps || "—";
-  document.getElementById("statDets").textContent    = dets.length;
-  document.getElementById("statDropped").textContent = cam.aiDropped || 0;
+  document.getElementById("statFps").textContent    = cam.aiFps || "—";
+  document.getElementById("statDropped").textContent= cam.aiDropped || 0;
+  document.getElementById("statTask").textContent   = task.toUpperCase().slice(0,5);
 
-  // Pulse on new detection
-  if(dets.length !== _prevDetCount && dets.length > 0){
-    const el = document.getElementById("statDets");
-    el.classList.remove("det-pulse");
-    void el.offsetWidth; el.classList.add("det-pulse");
-    if(dets.length > _prevDetCount) addEventLog(cam);
-  }
-  _prevDetCount = dets.length;
-
-  const list  = document.getElementById("detList");
+  const area  = document.getElementById("resultsArea");
   const empty = document.getElementById("detEmpty");
 
-  if(!dets.length){
-    empty.style.display = "";
-    // Clear items except empty placeholder
-    Array.from(list.querySelectorAll(".det-item")).forEach(e=>e.remove());
+  // ── Classification ──
+  if(task === "classify"){
+    const items = result.classifications || [];
+    document.getElementById("statDets").textContent = items.length;
+    if(!items.length){ empty.style.display=""; clearResultItems(area); return; }
+    empty.style.display = "none";
+    renderClassifications(area, items);
     return;
   }
+
+  // ── Pose ──
+  if(task === "pose"){
+    const poses = result.poses || [];
+    document.getElementById("statDets").textContent = poses.length;
+    if(!poses.length){ empty.style.display=""; clearResultItems(area); return; }
+    empty.style.display = "none";
+    renderPoses(area, poses);
+    if(poses.length !== _prevCount && poses.length > 0) addEventLog2(cam, poses.length, "person");
+    _prevCount = poses.length;
+    return;
+  }
+
+  // ── Track ──
+  if(task === "track"){
+    const tracks = result.tracks || [];
+    document.getElementById("statDets").textContent = tracks.length;
+    if(!tracks.length){ empty.style.display=""; clearResultItems(area); return; }
+    empty.style.display = "none";
+    renderTracks(area, tracks);
+    return;
+  }
+
+  // ── Detect / Segment / OBB ──
+  const dets = result.detections || [];
+  document.getElementById("statDets").textContent = dets.length;
+  if(dets.length !== _prevCount && dets.length > 0) addEventLog(cam);
+  _prevCount = dets.length;
+  if(!dets.length){ empty.style.display=""; clearResultItems(area); return; }
   empty.style.display = "none";
+  renderDetections(area, dets, task);
+}
 
-  // Rebuild detection items
-  const existing = Array.from(list.querySelectorAll(".det-item"));
+function clearResultItems(area){
+  area.querySelectorAll(".det-item,.track-item,.cls-result-item,.pose-item").forEach(e=>e.remove());
+}
+
+function renderDetections(area, dets, task){
+  const existing = Array.from(area.querySelectorAll(".det-item"));
   existing.slice(dets.length).forEach(e=>e.remove());
-
   dets.forEach((d, i) => {
-    let item = list.querySelector(`.det-item[data-i="${i}"]`);
+    let item = area.querySelector(`.det-item[data-i="${i}"]`);
     if(!item){
       item = document.createElement("div");
       item.className = "det-item"; item.dataset.i = i;
@@ -965,61 +1248,100 @@ function updateDetPanel(cam){
           <div class="det-conf-bar"><div class="det-conf-fill" id="dfil-${i}"></div></div>
         </div>
         <div class="det-box-info" id="dbox-${i}"></div>`;
-      list.appendChild(item);
+      area.appendChild(item);
     }
-    const col  = classColor(d.class_id);
-    const pct  = Math.round(d.confidence*100);
-    const [x1,y1,x2,y2] = d.box;
+    const col = classColor(d.class_id);
+    const pct = Math.round(d.confidence*100);
     document.getElementById(`dcol-${i}`).style.background = col;
     document.getElementById(`dlbl-${i}`).textContent = d.label;
-    document.getElementById(`dcnf-${i}`).textContent = `${pct}% confidence  ·  class ${d.class_id}`;
+    document.getElementById(`dcnf-${i}`).textContent = `${pct}% · cls ${d.class_id}` + (task==="segment"&&d.mask?.length?` · ${d.mask.length}pts`:"") + (task==="obb"?` · OBB`:"");
     document.getElementById(`dfil-${i}`).style.cssText = `width:${pct}%;background:${col}`;
-    document.getElementById(`dbox-${i}`).innerHTML = `${x2-x1}×${y2-y1}<br>${x1},${y1}`;
+    if(d.box){
+      const [x1,y1,x2,y2] = d.box;
+      document.getElementById(`dbox-${i}`).innerHTML = `${x2-x1}×${y2-y1}<br>${x1},${y1}`;
+    } else if(d.xywhr){
+      const [cx,cy,w,h,r] = d.xywhr;
+      document.getElementById(`dbox-${i}`).innerHTML = `${Math.round(w)}×${Math.round(h)}<br>${Math.round(r*180/Math.PI)}°`;
+    }
   });
 }
 
-let _logCount = 0;
-function addEventLog(cam){
-  const dets = cam.lastDets || [];
-  if(!dets.length) return;
-  const labels = [...new Set(dets.map(d=>d.label))];
-  const t = new Date();
-  const ts = `${pad2(t.getHours())}:${pad2(t.getMinutes())}:${pad2(t.getSeconds())}`;
+function renderTracks(area, tracks){
+  clearResultItems(area);
+  tracks.forEach(d => {
+    const item = document.createElement("div");
+    item.className = "track-item";
+    const col = COLORS[(d.track_id>=0?d.track_id:d.class_id)%COLORS.length];
+    const pct = Math.round(d.confidence*100);
+    item.innerHTML = `
+      <div class="track-id-badge">#${d.track_id>=0?d.track_id:"?"}</div>
+      <div class="track-body">
+        <div class="track-label" style="color:${col}">${d.label}</div>
+        <div class="track-conf">${pct}% · cls ${d.class_id}</div>
+      </div>`;
+    area.appendChild(item);
+  });
+}
 
-  const log = document.getElementById("evItems");
-  const item = document.createElement("div");
-  item.className = "ev-item";
-  item.innerHTML = `<span class="ev-time">${ts}</span>
-    <span class="ev-text"><span>${cam.name}</span> detected ${labels.slice(0,3).join(", ")}${labels.length>3?" +more":""}</span>`;
-  log.prepend(item);
-  _logCount++;
-  // Keep last 30 events
-  Array.from(log.children).slice(30).forEach(e=>e.remove());
+function renderClassifications(area, items){
+  clearResultItems(area);
+  items.forEach((c, i) => {
+    const item = document.createElement("div");
+    item.className = "cls-result-item";
+    const pct = Math.round(c.confidence*100);
+    item.innerHTML = `
+      <div class="cls-rank">${i+1}</div>
+      <div class="cls-body">
+        <div class="cls-label-name">${c.label}</div>
+        <div class="cls-conf-row">
+          <div class="cls-bar"><div class="cls-bar-fill" style="width:${pct}%"></div></div>
+          <span class="cls-pct">${pct}%</span>
+        </div>
+      </div>`;
+    area.appendChild(item);
+  });
+}
+
+function renderPoses(area, poses){
+  clearResultItems(area);
+  poses.forEach((p, pi) => {
+    const item = document.createElement("div");
+    item.className = "pose-item";
+    const col = classColor(p.class_id);
+    const pct = Math.round(p.confidence*100);
+    const kps = p.keypoints || [];
+    const highConf = kps.filter(k=>k.conf>=0.5);
+    let kpHtml = kps.slice(0,17).map((k,i)=>{
+      const hi = k.conf >= 0.5;
+      return `<div class="kp-item ${hi?"hi":""}" title="${KP_NAMES[i]||"kp"+i}">${KP_NAMES[i]?KP_NAMES[i].split("_")[1]||KP_NAMES[i]:i}: ${k.conf>=0.3?Math.round(k.x)+","+Math.round(k.y):"—"}</div>`;
+    }).join("");
+    item.innerHTML = `
+      <div class="pose-header">
+        <div class="pose-label" style="color:${col}">${p.label}</div>
+        <div class="pose-conf">${pct}% · ${highConf.length}/${kps.length} kps</div>
+      </div>
+      <div class="kp-grid">${kpHtml}</div>`;
+    area.appendChild(item);
+  });
 }
 
 // ════════════════════════════════════════════════════════════════
 // Focus / grid
 // ════════════════════════════════════════════════════════════════
 function focusCam(id){
-  focusId  = id;
-  selCamId = id;
-  const ov = document.getElementById("focusOverlay");
-  ov.classList.add("show");
+  focusId = id; selCamId = id;
+  document.getElementById("focusOverlay").classList.add("show");
   const cam = cameras[id];
   if(cam && cam.canvas){
     const fc = document.getElementById("focusCanvas");
-    fc.width  = cam.canvas.width;
-    fc.height = cam.canvas.height;
+    _resizeCanvas(fc, cam.canvas);
     fc.getContext("2d").drawImage(cam.canvas, 0, 0);
-    if(cam.lastDets.length) _drawDetectionOverlay(fc.getContext("2d"), cam.lastDets);
+    _drawResultOverlay(fc.getContext("2d"), cam.lastResult);
   }
-  // Highlight focused tab
   document.querySelectorAll(".cam-tab").forEach(t=>t.classList.remove("focused-tab"));
   document.getElementById(`tab-${id}`)?.classList.add("focused-tab");
-  // Update detection panel
   if(cam) updateDetPanel(cam);
 }
-
 function showGrid(){
   focusId = null;
   document.getElementById("focusOverlay").classList.remove("show");
@@ -1027,28 +1349,94 @@ function showGrid(){
 }
 
 // ════════════════════════════════════════════════════════════════
-// Model controls
+// Model + AI controls
 // ════════════════════════════════════════════════════════════════
 function loadModel(){
   const name = document.getElementById("modelSel").value;
   wsSend({action:"load_model", model:name});
 }
-
-function unloadModel(){
-  wsSend({action:"unload_model"});
-}
-
+function unloadModel(){ wsSend({action:"unload_model"}); }
 function toggleAI(){
   aiOn = !aiOn;
   wsSend({action:"set_ai", enabled:aiOn});
 }
+function onConfChange(val){ wsSend({action:"set_conf", value:val}); }
+function onIouChange(val){ wsSend({action:"set_iou",  value:val}); }
 
-function onConfChange(val){
-  wsSend({action:"set_conf", value:val});
+// ════════════════════════════════════════════════════════════════
+// Task switching
+// ════════════════════════════════════════════════════════════════
+function setTask(task){
+  wsSend({action:"set_task", task});
+  applyTaskUI(task);
 }
 
-function onIouChange(val){
-  wsSend({action:"set_iou", value:val});
+function applyTaskUI(task){
+  currentTask = task;
+  // update task buttons
+  const tasks = ["detect","segment","pose","obb","track","classify"];
+  tasks.forEach(t => {
+    const btn = document.getElementById(`task-${t}`);
+    if(!btn) return;
+    btn.className = "task-btn" + (t===task ? ` active-${t}` : "");
+  });
+  // task badge
+  const badge = document.getElementById("taskBadge");
+  const labels = {detect:"DETECT",segment:"SEGMENT",pose:"POSE",obb:"OBB",track:"TRACK",classify:"CLASSIFY"};
+  const colors = {detect:"var(--task-detect)",segment:"var(--task-segment)",pose:"var(--task-pose)",
+                  obb:"var(--task-obb)",track:"var(--task-track)",classify:"var(--task-classify)"};
+  badge.textContent = labels[task] || task.toUpperCase();
+  badge.style.color = colors[task] || "var(--text2)";
+  badge.style.borderColor = colors[task] || "var(--border)";
+
+  // show/hide task-specific sections
+  document.querySelectorAll(".task-section").forEach(el => el.classList.remove("visible"));
+  const secMap = {track:"sec-track", segment:"sec-segment", classify:"sec-classify"};
+  if(secMap[task]) document.getElementById(secMap[task])?.classList.add("visible");
+
+  // hide IoU for classify
+  document.getElementById("iouRow").style.display = task==="classify" ? "none" : "";
+  // hide class filter for classify (model handles it)
+  document.getElementById("sec-classfilter").style.display = (task==="classify"||task==="pose") ? "none" : "";
+
+  // panel title
+  const titles = {detect:"Detections",segment:"Segments",pose:"Poses",obb:"OBB Objects",track:"Tracks",classify:"Classification"};
+  document.getElementById("panelTitle").textContent = titles[task] || "Results";
+}
+
+// ════════════════════════════════════════════════════════════════
+// Sync config from server
+// ════════════════════════════════════════════════════════════════
+function applyInfCfg(cfg){
+  if(cfg.task) applyTaskUI(cfg.task);
+  if(cfg.tracker){
+    const sel = document.getElementById("trackerSel");
+    if(sel) sel.value = cfg.tracker;
+  }
+  if(cfg.imgsz !== undefined){
+    const sel = document.getElementById("imgszSel");
+    if(sel) sel.value = String(cfg.imgsz);
+  }
+  if(cfg.max_det !== undefined){
+    const inp = document.getElementById("maxDetInput");
+    if(inp) inp.value = cfg.max_det;
+  }
+  if(cfg.half !== undefined){
+    const cb = document.getElementById("halfCb");
+    if(cb) cb.checked = cfg.half;
+  }
+  if(cfg.agnostic_nms !== undefined){
+    const cb = document.getElementById("agnosticCb");
+    if(cb) cb.checked = cfg.agnostic_nms;
+  }
+  if(cfg.retina_masks !== undefined){
+    const cb = document.getElementById("retinaCb");
+    if(cb) cb.checked = cfg.retina_masks;
+  }
+  if(cfg.topk !== undefined){
+    const sl = document.getElementById("topkSlider");
+    if(sl){ sl.value = cfg.topk; sl.nextElementSibling.textContent = cfg.topk; }
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1056,13 +1444,13 @@ function onIouChange(val){
 // ════════════════════════════════════════════════════════════════
 function buildClassGrid(){
   const grid = document.getElementById("clsGrid");
-  const priority = [0,1,2,3,4,5,6,7,8,14,15,16,62,63,67];  // common first
+  const priority = [0,1,2,3,4,5,6,7,8,14,15,16,62,63,67];
   const order = [...priority, ...Object.keys(COCO).map(Number).filter(k=>!priority.includes(k))];
   order.forEach(id => {
     const item = document.createElement("label");
     item.className = "cls-item";
     const cb = document.createElement("input");
-    cb.type = "checkbox"; cb.checked = true; cb.dataset.cls = id;
+    cb.type="checkbox"; cb.checked=true; cb.dataset.cls=id;
     cb.onchange = applyClassFilter;
     item.appendChild(cb);
     const span = document.createElement("span");
@@ -1071,40 +1459,32 @@ function buildClassGrid(){
     grid.appendChild(item);
   });
 }
-
 function toggleAllClasses(state){
-  document.querySelectorAll("#clsGrid input").forEach(cb => cb.checked = state);
+  document.querySelectorAll("#clsGrid input").forEach(cb=>cb.checked=state);
   applyClassFilter();
 }
-
 function applyClassFilter(){
-  const checked = Array.from(document.querySelectorAll("#clsGrid input:checked"))
-    .map(cb => +cb.dataset.cls);
+  const checked = Array.from(document.querySelectorAll("#clsGrid input:checked")).map(cb=>+cb.dataset.cls);
   const all = checked.length === Object.keys(COCO).length;
   classFilter = all ? null : checked;
   wsSend({action:"set_classes", classes:classFilter});
 }
 
 // ════════════════════════════════════════════════════════════════
-// Topbar badge helpers
+// Badge helpers
 // ════════════════════════════════════════════════════════════════
 function setStreamBadge(on){
   const b = document.getElementById("streamBadge");
   b.classList.toggle("on", on);
-  b.querySelector(".dot").style.display = on ? "" : "none";
-  b.querySelector(".dot").style.cssText += on ? ";background:var(--live)" : ";background:var(--text3)";
 }
-
 function setAIBadge(on){
   document.getElementById("aiBadge").classList.toggle("on", on);
 }
-
 function setModelBadge(name){
   const b = document.getElementById("modelBadge");
-  b.textContent = name === "none" ? "No Model" : `⬡ ${name}`;
-  b.style.color = name === "none" ? "var(--text3)" : "var(--accent2)";
+  b.textContent = name==="none" ? "No Model" : `⬡ ${name}`;
+  b.style.color = name==="none" ? "var(--text3)" : "var(--accent2)";
 }
-
 function setLoadingState(loading, name){
   const btn     = document.getElementById("loadBtn");
   const spinner = document.getElementById("loadSpinner");
@@ -1116,6 +1496,32 @@ function setLoadingState(loading, name){
 }
 
 // ════════════════════════════════════════════════════════════════
+// Event log
+// ════════════════════════════════════════════════════════════════
+function pad2(n){ return String(n).padStart(2,"0"); }
+function _ts(){ const t=new Date(); return `${pad2(t.getHours())}:${pad2(t.getMinutes())}:${pad2(t.getSeconds())}`; }
+
+function addEventLog(cam){
+  const dets = (cam.lastResult?.detections)||[];
+  if(!dets.length) return;
+  const labels = [...new Set(dets.map(d=>d.label))];
+  const log = document.getElementById("evItems");
+  const item = document.createElement("div"); item.className="ev-item";
+  item.innerHTML = `<span class="ev-time">${_ts()}</span>
+    <span class="ev-text"><span>${cam.name}</span> detected ${labels.slice(0,3).join(", ")}${labels.length>3?" +more":""}</span>`;
+  log.prepend(item);
+  Array.from(log.children).slice(30).forEach(e=>e.remove());
+}
+function addEventLog2(cam, count, label){
+  const log = document.getElementById("evItems");
+  const item = document.createElement("div"); item.className="ev-item";
+  item.innerHTML = `<span class="ev-time">${_ts()}</span>
+    <span class="ev-text"><span>${cam.name}</span> pose: ${count} ${label}${count!==1?"s":""}</span>`;
+  log.prepend(item);
+  Array.from(log.children).slice(30).forEach(e=>e.remove());
+}
+
+// ════════════════════════════════════════════════════════════════
 // Toast
 // ════════════════════════════════════════════════════════════════
 let _toastTimer;
@@ -1124,22 +1530,15 @@ function toast(msg, kind, dur=2800){
   el.textContent = msg;
   el.className = "show" + (kind ? ` ${kind}` : "");
   clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => el.className = "", dur);
+  _toastTimer = setTimeout(()=>el.className="", dur);
 }
-
-// ════════════════════════════════════════════════════════════════
-// Utilities
-// ════════════════════════════════════════════════════════════════
-function pad2(n){ return String(n).padStart(2,"0"); }
 
 // ════════════════════════════════════════════════════════════════
 // Boot
 // ════════════════════════════════════════════════════════════════
 buildClassGrid();
 connect();
-
-// Periodically request AI stats
-setInterval(() => wsSend({action:"get_stats"}), 3000);
+setInterval(()=>wsSend({action:"get_stats"}), 3000);
 </script>
 </body>
 </html>
